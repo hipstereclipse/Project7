@@ -18,7 +18,7 @@ def main():
     """Main function to run the simulation."""
     # Lets me make some different simulation parameters easily
     params = SimulationParameters(
-        num_segments=25,  # Number of segments (spaces in between objects)
+        num_segments=10,  # Number of segments (spaces in between objects)
         spring_constant=1000.0,  # Strong springs for stability
         applied_force = np.array([0.0, 0.0, 10.0]),
         mass=0.001,  # Mass for each point

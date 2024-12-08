@@ -119,7 +119,7 @@ class PhysicsEngine:
 
         return total_force / obj.mass  # Acceleration = Force / Mass
 
-    def step(self, integration_method: str = 'leapfrog') -> None:
+    def step(self, integration_method: str = 'rk4') -> None:
         """
         Advance the simulation by one timestep using the specified integration method.
 
@@ -136,7 +136,7 @@ class PhysicsEngine:
         accelerations = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])  # Accelerations
 
         # Prepare for integration
-        if integration_method in ['leapfrog', 'euler_croner', 'rk2']:
+        if integration_method in ['leapfrog', 'euler_croner', 'euler', 'rk2', 'rk4']:
             # A function to recompute accelerations during integration
             def get_accelerations(pos):
                 original_positions = positions.copy()

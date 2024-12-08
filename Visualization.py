@@ -153,14 +153,15 @@ class SimulationVisualizer:
             objects: List of objects to visualize.
             dark_mode: Whether to use dark mode for the UI.
         """
-        self.physics = physics_model  # Reference to the physics model.
-        self.objects = objects  # List of objects in the simulation.
-        self.dark_mode = dark_mode  # Flag for dark mode.
-        self.paused = False  # Whether the simulation is paused.
-        self.rotating = False  # Flag for camera rotation.
-        self.panning = False  # Flag for camera panning.
-        self.plots = {}  # Storage for plot elements (scatter, lines).
-        self.simulation_time = 0.0  # Current simulation time.
+        self.physics = physics_model  # Reference to the physics model
+        self.objects = objects  # List of objects in the simulation
+        self.dark_mode = dark_mode  # Flag for dark mode
+        self.paused = False  # Whether the simulation is paused
+        self.rotating = False  # Flag for camera rotation
+        self.panning = False  # Flag for camera panning
+        self.plots = {}  # Storage for plot elements (scatter, lines)
+        self.simulation_time = 0.0  # Current simulation time
+        self.iteration_count = 100  # Default number of physics iterations per frame
 
         # Save initial object states (positions and velocities).
         self.original_positions = [obj.position.copy() for obj in objects]
@@ -212,7 +213,17 @@ class SimulationVisualizer:
         left_panel_start = 0.07
         panel_width = 0.12
 
-        # Basic control buttons
+        # Add simulation speed slider at the bottom
+        self.speed_slider = Slider(
+            plt.axes([0.24, 0.02, 0.44, 0.02]),  # Position below other controls
+            'Simulation Speed',
+            1, 200,  # Range from 1 to 200 iterations per frame
+            valinit=self.iteration_count,
+            valfmt='%d steps/frame'
+        )
+        self.speed_slider.on_changed(self.set_simulation_speed)
+
+        # Move the basic control buttons up slightly to make room for the speed slider
         button_configs = [
             ('play_button', 'Pause', 0.24),
             ('reset_button', 'Reset', 0.35),
@@ -222,7 +233,7 @@ class SimulationVisualizer:
         ]
 
         for btn_name, label, x_pos in button_configs:
-            btn = Button(plt.axes([x_pos, 0.02, 0.1, 0.04]), label, color=btn_color)
+            btn = Button(plt.axes([x_pos, 0.06, 0.1, 0.04]), label, color=btn_color)
             setattr(self, btn_name, btn)
 
         # Connect button callbacks
@@ -341,15 +352,20 @@ class SimulationVisualizer:
 
         self.fig.canvas.draw_idle()
 
+    def set_simulation_speed(self, val):
+        """Set the number of physics iterations per frame."""
+        self.iteration_count = int(val)
+
     def update_frame(self, frame):
         """Update animation frame."""
         if not self.paused:
-            i = 100
+            # Use the iteration count from the slider
+            i = self.iteration_count
             while i > 0:
                 self.physics.step()
                 i -= 1
 
-            if self.force_handler.check_duration():  # No longer passing simulation_time
+            if self.force_handler.check_duration():
                 self.force_button.label.set_text('Apply Force')
                 self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
                 self.fig.canvas.draw_idle()
@@ -384,6 +400,7 @@ class SimulationVisualizer:
         info_text = (
             f"View: {self.view_button.label.get_text().split(': ')[1]}\n"
             f"{'PAUSED' if self.paused else 'RUNNING'}\n"
+            f"Steps per Frame: {self.iteration_count}\n"
             f"Selected Object: {self.force_handler.selected_object}\n"
             f"Force Mode: {'Continuous' if self.force_handler.continuous else 'Single'}\n"
             f"Force Status: {'Active' if self.force_handler.active else 'Inactive'}\n"
