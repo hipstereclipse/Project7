@@ -258,54 +258,6 @@ class StringSimulationSetup:
         mass_entry = ttk.Entry(props_frame, textvariable=self.mass_var, width=10)
         mass_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        # Integration method
-        method_frame = ttk.LabelFrame(parent, text="Integration Method", padding="10")
-        method_frame.pack(fill="x", padx=5, pady=5)
-
-        methods = ['euler', 'euler_cromer', 'rk2', 'leapfrog', 'rk4']
-        for i, method in enumerate(methods):
-            ttk.Radiobutton(
-                method_frame,
-                text=method.replace('_', ' ').title(),
-                value=method,
-                variable=self.integration_var
-            ).grid(row=i, column=0, padx=5, pady=2, sticky="w")
-
-        # Add method descriptions
-        descriptions = {
-            'euler': "Simple first-order method (fastest but least accurate)",
-            'euler_cromer': "Modified Euler method with better energy conservation",
-            'rk2': "Second-order Runge-Kutta method",
-            'leapfrog': "Symplectic method with good energy conservation",
-            'rk4': "Fourth-order Runge-Kutta method (most accurate but slowest)"
-        }
-
-        for i, method in enumerate(methods):
-            ttk.Label(
-                method_frame,
-                text=descriptions[method],
-                font=("Arial", 8),
-                foreground="gray"
-            ).grid(row=i, column=1, padx=5, pady=2, sticky="w")
-
-    def setup_advanced_parameters(self, parent):
-        """Setup advanced simulation parameters."""
-        # Time step configuration
-        time_frame = ttk.LabelFrame(parent, text="Time Settings", padding="10")
-        time_frame.pack(fill="x", padx=5, pady=5)
-
-        ttk.Label(time_frame, text="Time step (dt):").grid(row=0, column=0, padx=5, pady=5)
-        dt_entry = ttk.Entry(time_frame, textvariable=self.dt_var, width=10)
-        dt_entry.grid(row=0, column=1, padx=5, pady=5)
-
-        # Force configuration
-        force_frame = ttk.LabelFrame(parent, text="Force Settings", padding="10")
-        force_frame.pack(fill="x", padx=5, pady=5)
-
-        ttk.Label(force_frame, text="Force magnitude (N):").grid(row=0, column=0, padx=5, pady=5)
-        force_entry = ttk.Entry(force_frame, textvariable=self.force_magnitude_var, width=10)
-        force_entry.grid(row=0, column=1, padx=5, pady=5)
-
         # Display settings
         display_frame = ttk.LabelFrame(parent, text="Display Settings", padding="10")
         display_frame.pack(fill="x", padx=5, pady=5)
@@ -315,6 +267,56 @@ class StringSimulationSetup:
             text="Dark Mode",
             variable=self.dark_mode_var
         ).pack(padx=5, pady=5)
+
+    def setup_advanced_parameters(self, parent):
+        """Setup advanced simulation parameters."""
+
+        # Force configuration
+        force_frame = ttk.LabelFrame(parent, text="Force Settings", padding="10")
+        force_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(force_frame, text="Force magnitude (N):").grid(row=0, column=0, padx=5, pady=5)
+        force_entry = ttk.Entry(force_frame, textvariable=self.force_magnitude_var, width=10)
+        force_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Integration method
+        method_frame = ttk.LabelFrame(parent, text="Integration Method", padding="10")
+        method_frame.pack(fill="x", padx=5, pady=5)
+
+        methods = ['euler', 'euler_cromer', 'rk2', 'leapfrog', 'rk4']
+        descriptions = {
+            'euler': "Simple first-order method (fastest but least accurate)",
+            'euler_cromer': "Modified Euler method with better energy conservation",
+            'rk2': "Second-order Runge-Kutta method",
+            'leapfrog': "Symplectic method with good energy conservation",
+            'rk4': "Fourth-order Runge-Kutta method (most accurate but slowest)"
+        }
+
+        for i, method in enumerate(methods):
+            frame = ttk.Frame(method_frame)
+            frame.grid(row=i, column=0, sticky="w", padx=5, pady=2)
+
+            ttk.Radiobutton(
+                frame,
+                text=method.replace('_', ' ').title(),
+                value=method,
+                variable=self.integration_var
+            ).pack(side=tk.LEFT)
+
+            ttk.Label(
+                frame,
+                text=descriptions[method],
+                font=("Arial", 8),
+                foreground="gray"
+            ).pack(side=tk.LEFT, padx=5)
+
+        # Time step configuration
+        time_frame = ttk.LabelFrame(parent, text="Time Settings", padding="10")
+        time_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(time_frame, text="Time step (dt):").grid(row=0, column=0, padx=5, pady=5)
+        dt_entry = ttk.Entry(time_frame, textvariable=self.dt_var, width=10)
+        dt_entry.grid(row=0, column=1, padx=5, pady=5)
 
         # Add tooltips and help text
         help_frame = ttk.Frame(parent)
