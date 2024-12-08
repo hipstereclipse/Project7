@@ -550,7 +550,7 @@ class SimulationVisualizer:
         self.amplitude_slider = Slider(
             plt.axes([left_panel_start, 0.35, panel_width, 0.02]),
             'Amplitude',
-            0.1, 20.0,
+            0.1, 50.0,
             valinit=self.force_handler.amplitude
         )
         self.amplitude_slider.on_changed(self.set_force_amplitude)
@@ -829,22 +829,33 @@ class SimulationVisualizer:
 
     def reset_simulation(self, event):
         """Reset simulation to initial state."""
-        self.simulation_time = 0.0
+        # Reset time tracking
+        self.animation_frame_count = 0
+        self.fps = 0
+        self.frame_times.clear()
+        self.last_frame_time = time.time()
+
+        # Reset physics state
+        self.physics.time = self.initial_physics_time  # Reset physics engine time
         self.force_handler.deactivate()
         self.force_handler.last_application_time = 0.0
 
+        # Reset all objects to initial state
         for i, obj in enumerate(self.objects):
             obj.position = self.original_positions[i].copy()
             obj.velocity = self.original_velocities[i].copy()
             if hasattr(obj, 'acceleration'):
                 obj.acceleration = np.zeros(3)
 
+        # Reset force button state
         self.force_button.label.set_text('Apply Force')
         self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
-        self.fig.canvas.draw_idle()
 
         # Clear the data history
         self.physics.data_recorder.clear_history()
+
+        # Refresh the display
+        self.fig.canvas.draw_idle()
 
     def toggle_force(self, event):
         """
