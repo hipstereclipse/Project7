@@ -217,7 +217,7 @@ class SimulationVisualizer:
         self.speed_slider = Slider(
             plt.axes([0.24, 0.02, 0.44, 0.02]),  # Position below other controls
             'Simulation Speed',
-            1, 200,  # Range from 1 to 200 iterations per frame
+            1, 1000,  # Range from 1 to 1000 iterations per frame
             valinit=self.iteration_count,
             valfmt='%d steps/frame'
         )

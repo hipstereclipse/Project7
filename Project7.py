@@ -2,7 +2,7 @@ import numpy as np
 from Simulation import StringSimulation, SimulationParameters
 
 def easy_select():
-    easynum = 5
+    easynum = 4
     if easynum == 1:
         return 'euler'
     elif easynum == 2:

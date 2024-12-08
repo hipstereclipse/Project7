@@ -119,7 +119,7 @@ class PhysicsEngine:
 
         return total_force / obj.mass  # Acceleration = Force / Mass
 
-    def step(self, integration_method: str = 'rk4') -> None:
+    def step(self, integration_method: str = 'leapfrog') -> None:
         """
         Advance the simulation by one timestep using the specified integration method.
 
