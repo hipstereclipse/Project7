@@ -901,20 +901,34 @@ class SimulationVisualizer:
         self.dark_mode = not self.dark_mode
         plt.style.use('dark_background' if self.dark_mode else 'default')
 
+        # Update text colors
         text_color = 'white' if self.dark_mode else 'black'
         self.info_text.set_color(text_color)
         self.force_info_text.set_color(text_color)
+        self.fig.texts[0].set_color(text_color)  # Force Controls header
+        self.fig.texts[1].set_color(text_color)  # Direction label
+
+        # Updates UI elements
+        btn_color = 'darkgray' if not self.dark_mode else 'gray'
+        for btn in [self.play_button, self.reset_button, self.view_button,
+                   self.zoom_button, self.theme_button, self.setup_button,
+                   self.force_button, self.continuous_force_button]:
+            btn.color = btn_color
+            if hasattr(btn, 'label'):
+                btn.label.set_color(text_color)
+
+        # Updates sliders
+        for slider in [self.speed_slider, self.object_slider,
+                      self.amplitude_slider, self.duration_slider]:
+            slider.label.set_color(text_color)
+            slider.valtext.set_color(text_color)
+
+        # Updates figure colors
         self.fig.set_facecolor('black' if self.dark_mode else 'white')
         self.ax.set_facecolor('black' if self.dark_mode else 'white')
 
-        btn_color = 'darkgray' if not self.dark_mode else 'gray'
-        for btn in [self.play_button, self.view_button,
-                    self.zoom_button, self.theme_button]:
-            btn.color = btn_color
-
-        self.theme_button.label.set_text(
-            'Dark Mode' if not self.dark_mode else 'Light Mode'
-        )
+        # Theme button text
+        self.theme_button.label.set_text('Dark Mode' if not self.dark_mode else 'Light Mode')
 
         self.fig.canvas.draw_idle()
 
