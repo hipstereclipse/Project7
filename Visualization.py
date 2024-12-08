@@ -433,6 +433,16 @@ class SimulationVisualizer:
         # Set up the visualization environment
         self.setup_visualization()
 
+        # Add force info text display
+        self.force_info_text = self.ax.text2D(
+            1.15, 0.55,  # Position it below the regular info text
+            '',
+            transform=self.ax.transAxes,
+            color='white' if self.dark_mode else 'black',
+            fontsize=10,
+            verticalalignment='top'
+        )
+
     def setup_visualization(self):
         """Set up visualization window and controls."""
         # Apply the appropriate matplotlib style (dark or light mode)
@@ -666,10 +676,8 @@ class SimulationVisualizer:
 
     def update_info(self):
         """Update information display with enhanced simulation details."""
-        # Calculate effective dt per frame
+        # Original info text update remains the same
         dt_per_frame = self.physics.dt * self.iteration_count
-
-        # Format the integration method name for display
         method_name = self.integration_method.replace('_', ' ').title()
 
         info_text = (
@@ -686,6 +694,47 @@ class SimulationVisualizer:
             f"Duration: {self.force_handler.duration_remaining:.2f}s"
         )
         self.info_text.set_text(info_text)
+
+        # Update force information display
+        selected_obj = self.objects[self.force_handler.selected_object]
+
+        # Get external force from physics engine
+        external_force = self.physics.external_forces[selected_obj.obj_id]
+
+        # Get spring forces
+        spring_forces = np.zeros(3)
+        if self.force_handler.selected_object > 0:
+            spring_forces += self.physics.compute_spring_force(
+                selected_obj.position,
+                self.objects[self.force_handler.selected_object - 1].position
+            )
+        if self.force_handler.selected_object < len(self.objects) - 1:
+            spring_forces += self.physics.compute_spring_force(
+                selected_obj.position,
+                self.objects[self.force_handler.selected_object + 1].position
+            )
+
+        # Calculate total force
+        total_force = external_force + spring_forces
+
+        # Format force information
+        force_text = (
+            f"Forces on Mass {self.force_handler.selected_object}:\n"
+            f"─────────────────────────\n"
+            f"External Force:\n"
+            f"  X: {external_force[0]:8.3f} N\n"
+            f"  Y: {external_force[1]:8.3f} N\n"
+            f"  Z: {external_force[2]:8.3f} N\n"
+            f"Spring Forces:\n"
+            f"  X: {spring_forces[0]:8.3f} N\n"
+            f"  Y: {spring_forces[1]:8.3f} N\n"
+            f"  Z: {spring_forces[2]:8.3f} N\n"
+            f"Total Force:\n"
+            f"  X: {total_force[0]:8.3f} N\n"
+            f"  Y: {total_force[1]:8.3f} N\n"
+            f"  Z: {total_force[2]:8.3f} N\n"
+        )
+        self.force_info_text.set_text(force_text)
 
     def highlight_selected_object(self):
         """Update object highlighting based on selection."""
@@ -842,6 +891,7 @@ class SimulationVisualizer:
 
         text_color = 'white' if self.dark_mode else 'black'
         self.info_text.set_color(text_color)
+        self.force_info_text.set_color(text_color)
         self.fig.set_facecolor('black' if self.dark_mode else 'white')
         self.ax.set_facecolor('black' if self.dark_mode else 'white')
 
