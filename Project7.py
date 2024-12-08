@@ -2,15 +2,17 @@ import numpy as np
 from Simulation import StringSimulation, SimulationParameters
 
 def easy_select():
-    easynum = 1
+    easynum = 5
     if easynum == 1:
         return 'euler'
     elif easynum == 2:
         return  'rk2'
     elif easynum == 3:
         return  'euler_cromer'
+    elif easynum == 4:
+        return  'leapfrog'
     else:
-        return 'leapfrog'
+        return 'rk4'
 
 def main():
     """Main function to run the simulation."""
