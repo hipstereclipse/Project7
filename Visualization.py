@@ -460,23 +460,23 @@ class SimulationVisualizer:
         self._connect_events()
 
     def setup_enhanced_controls(self):
-        """Set up control panel with force controls and buttons."""
+        """Set up control panel with force controls, buttons, and data saving."""
         btn_color = 'darkgray' if not self.dark_mode else 'gray'
         text_color = 'white' if self.dark_mode else 'black'
 
         # Return to Setup button in top left corner with padding
         self.setup_button = Button(
-            plt.axes([0.02, 0.94, 0.12, 0.04]),  # [left, bottom, width, height]
+            plt.axes([0.02, 0.94, 0.12, 0.04]),
             'Return to Setup',
             color=btn_color
         )
         self.setup_button.on_clicked(self.return_to_setup)
 
-        # Left side panel for force controls (keep existing position)
+        # Left side panel for force controls
         left_panel_start = 0.07
         panel_width = 0.12
 
-        # Add simulation speed slider at the bottom (keep existing position)
+        # Simulation speed slider at the bottom
         self.speed_slider = Slider(
             plt.axes([0.24, 0.02, 0.44, 0.02]),
             'Simulation Speed',
@@ -486,16 +486,17 @@ class SimulationVisualizer:
         )
         self.speed_slider.on_changed(self.set_simulation_speed)
 
-        # Move the remaining control buttons up slightly
+        # Control buttons
         button_configs = [
             ('play_button', 'Pause', 0.24),
             ('reset_button', 'Reset', 0.35),
             ('view_button', 'View: Default', 0.46),
             ('zoom_button', 'Zoom: Fit All', 0.57),
-            ('theme_button', 'Theme', 0.68)
-            # Removed setup_button from here since it's now in top left
+            ('theme_button', 'Theme', 0.68),
+            ('save_button', 'Save Data', 0.79)  # Added save button
         ]
 
+        # Create buttons
         for btn_name, label, x_pos in button_configs:
             btn = Button(plt.axes([x_pos, 0.06, 0.1, 0.04]), label, color=btn_color)
             setattr(self, btn_name, btn)
@@ -506,17 +507,19 @@ class SimulationVisualizer:
         self.view_button.on_clicked(self.cycle_view)
         self.zoom_button.on_clicked(self.cycle_zoom)
         self.theme_button.on_clicked(self.toggle_theme)
+        self.save_button.on_clicked(self.save_simulation_data)
 
-        # Force controls header (adjust position to avoid overlap with setup button)
+        # Force controls header
         self.fig.text(left_panel_start, 0.9, 'Force Controls', color=text_color, fontsize=10)
 
-        # Rest of the controls remain the same
+        # Force type radio buttons
         self.force_radio = RadioButtons(
             plt.axes([left_panel_start, 0.72, panel_width, 0.15]),
             list(self.force_handler.types.keys())
         )
         self.force_radio.on_clicked(self.set_force_type)
 
+        # Force direction controls
         self.fig.text(left_panel_start, 0.65, 'Direction:', color=text_color, fontsize=10)
         self.direction_radio = RadioButtons(
             plt.axes([left_panel_start, 0.47, panel_width, 0.15]),
@@ -524,6 +527,7 @@ class SimulationVisualizer:
         )
         self.direction_radio.on_clicked(self.set_force_direction)
 
+        # Object selection slider
         self.object_slider = Slider(
             plt.axes([left_panel_start, 0.40, panel_width, 0.02]),
             'Object',
@@ -533,6 +537,7 @@ class SimulationVisualizer:
         )
         self.object_slider.on_changed(self.set_selected_object)
 
+        # Force amplitude slider
         self.amplitude_slider = Slider(
             plt.axes([left_panel_start, 0.35, panel_width, 0.02]),
             'Amplitude',
@@ -541,6 +546,7 @@ class SimulationVisualizer:
         )
         self.amplitude_slider.on_changed(self.set_force_amplitude)
 
+        # Force duration slider
         self.duration_slider = Slider(
             plt.axes([left_panel_start, 0.30, panel_width, 0.02]),
             'Duration',
@@ -551,6 +557,7 @@ class SimulationVisualizer:
         self.duration_slider.on_changed(self.set_force_duration)
         self.duration_slider.on_changed(self.set_force_duration_remaining)
 
+        # Force control buttons
         self.force_button = Button(
             plt.axes([left_panel_start, 0.20, panel_width, 0.04]),
             'Apply Force',
@@ -558,6 +565,7 @@ class SimulationVisualizer:
         )
         self.force_button.on_clicked(self.toggle_force)
 
+        # Continuous force toggle button
         self.continuous_force_button = Button(
             plt.axes([left_panel_start, 0.15, panel_width, 0.04]),
             'Continuous: Off',
@@ -621,6 +629,51 @@ class SimulationVisualizer:
         self.iteration_count = int(val)
         # Force an immediate update of the info display when speed changes
         self.update_info()
+
+    def save_simulation_data(self, event):
+        """Handle saving simulation data when save button is clicked."""
+        from tkinter import filedialog, messagebox
+        import tkinter as tk
+
+        # Pause the simulation first
+        if not self.paused:
+            self.toggle_pause(None)  # Pass None since we're not handling a direct button event
+            self.play_button.label.set_text('Resume')
+            self.fig.canvas.draw_idle()
+
+        # Create temporary root window for file dialog
+        root = tk.Tk()
+        root.withdraw()  # Hide the root window
+
+        # Get file name from user with file dialog
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Save Simulation Data"
+        )
+
+        # If user didn't cancel the dialog
+        if file_path:
+            try:
+                # Import and use the save_simulation_data function
+                from data_handling import save_simulation_data
+                save_simulation_data(file_path, self.physics.time, self.objects)
+
+                # Show success popup
+                messagebox.showinfo(
+                    "Success",
+                    f"Simulation data has been saved successfully to:\n{file_path}"
+                )
+
+            except Exception as e:
+                # Show error popup if something goes wrong
+                messagebox.showerror(
+                    "Error",
+                    f"An error occurred while saving the data:\n{str(e)}"
+                )
+
+        # Cleanup the temporary root window
+        root.destroy()
 
     def update_frame(self, frame):
         """
@@ -900,8 +953,8 @@ class SimulationVisualizer:
         # Updates UI elements
         btn_color = 'darkgray' if not self.dark_mode else 'gray'
         for btn in [self.play_button, self.reset_button, self.view_button,
-                   self.zoom_button, self.theme_button, self.setup_button,
-                   self.force_button, self.continuous_force_button]:
+                    self.zoom_button, self.theme_button, self.setup_button,
+                    self.force_button, self.continuous_force_button, self.save_button]:  # Added save_button
             btn.color = btn_color
             if hasattr(btn, 'label'):
                 btn.label.set_color(text_color)
