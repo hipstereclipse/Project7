@@ -455,28 +455,36 @@ class SimulationVisualizer:
         btn_color = 'darkgray' if not self.dark_mode else 'gray'
         text_color = 'white' if self.dark_mode else 'black'
 
-        # Left side panel for force controls
+        # Return to Setup button in top left corner with padding
+        self.setup_button = Button(
+            plt.axes([0.02, 0.94, 0.12, 0.04]),  # [left, bottom, width, height]
+            'Return to Setup',
+            color=btn_color
+        )
+        self.setup_button.on_clicked(self.return_to_setup)
+
+        # Left side panel for force controls (keep existing position)
         left_panel_start = 0.07
         panel_width = 0.12
 
-        # Add simulation speed slider at the bottom
+        # Add simulation speed slider at the bottom (keep existing position)
         self.speed_slider = Slider(
-            plt.axes([0.24, 0.02, 0.44, 0.02]),  # Position below other controls
+            plt.axes([0.24, 0.02, 0.44, 0.02]),
             'Simulation Speed',
-            1, 1000,  # Range from 1 to 1000 iterations per frame
+            1, 1000,
             valinit=self.iteration_count,
             valfmt='%d steps/frame'
         )
         self.speed_slider.on_changed(self.set_simulation_speed)
 
-        # Move the basic control buttons up slightly to make room for the speed slider
+        # Move the remaining control buttons up slightly
         button_configs = [
             ('play_button', 'Pause', 0.24),
             ('reset_button', 'Reset', 0.35),
             ('view_button', 'View: Default', 0.46),
             ('zoom_button', 'Zoom: Fit All', 0.57),
-            ('theme_button', 'Theme', 0.68),
-            ('setup_button', 'Return to Setup', 0.79)  # New Return to Setup button
+            ('theme_button', 'Theme', 0.68)
+            # Removed setup_button from here since it's now in top left
         ]
 
         for btn_name, label, x_pos in button_configs:
@@ -489,19 +497,17 @@ class SimulationVisualizer:
         self.view_button.on_clicked(self.cycle_view)
         self.zoom_button.on_clicked(self.cycle_zoom)
         self.theme_button.on_clicked(self.toggle_theme)
-        self.setup_button.on_clicked(self.return_to_setup)  # Connect new button callback
 
-        # Force controls header
+        # Force controls header (adjust position to avoid overlap with setup button)
         self.fig.text(left_panel_start, 0.9, 'Force Controls', color=text_color, fontsize=10)
 
-        # Force type selector
+        # Rest of the controls remain the same
         self.force_radio = RadioButtons(
             plt.axes([left_panel_start, 0.72, panel_width, 0.15]),
             list(self.force_handler.types.keys())
         )
         self.force_radio.on_clicked(self.set_force_type)
 
-        # Force direction selector
         self.fig.text(left_panel_start, 0.65, 'Direction:', color=text_color, fontsize=10)
         self.direction_radio = RadioButtons(
             plt.axes([left_panel_start, 0.47, panel_width, 0.15]),
@@ -509,7 +515,6 @@ class SimulationVisualizer:
         )
         self.direction_radio.on_clicked(self.set_force_direction)
 
-        # Object selector slider
         self.object_slider = Slider(
             plt.axes([left_panel_start, 0.40, panel_width, 0.02]),
             'Object',
@@ -519,7 +524,6 @@ class SimulationVisualizer:
         )
         self.object_slider.on_changed(self.set_selected_object)
 
-        # Force amplitude slider
         self.amplitude_slider = Slider(
             plt.axes([left_panel_start, 0.35, panel_width, 0.02]),
             'Amplitude',
@@ -528,7 +532,6 @@ class SimulationVisualizer:
         )
         self.amplitude_slider.on_changed(self.set_force_amplitude)
 
-        # Duration slider
         self.duration_slider = Slider(
             plt.axes([left_panel_start, 0.30, panel_width, 0.02]),
             'Duration',
@@ -539,7 +542,6 @@ class SimulationVisualizer:
         self.duration_slider.on_changed(self.set_force_duration)
         self.duration_slider.on_changed(self.set_force_duration_remaining)
 
-        # Force buttons
         self.force_button = Button(
             plt.axes([left_panel_start, 0.20, panel_width, 0.04]),
             'Apply Force',
