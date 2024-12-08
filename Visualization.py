@@ -13,10 +13,29 @@ from dataclasses import dataclass, field
 import numpy as np
 from typing import Optional
 
+class ViewPreset(Enum):
+    """Predefined view angles for the simulation."""
+    DEFAULT = {"name": "Default", "azim": 45, "elev": 15}
+    TOP = {"name": "Top (XY)", "azim": 0, "elev": 90}
+    FRONT = {"name": "Front (XZ)", "azim": 0, "elev": 0}
+    SIDE = {"name": "Side (YZ)", "azim": 90, "elev": 0}
+    ISOMETRIC = {"name": "Isometric", "azim": 45, "elev": 35}
+    FREE = {"name": "Free", "azim": None, "elev": None}
+@dataclass
+class SimulationParameters:
+    """Parameters for string simulation configuration."""
+    num_segments: int = 50  # Number of segments in the string
+    spring_constant: float = 1000.0  # Spring constant (k)
+    mass: float = 0.01  # Mass of each point
+    dt: float = 0.0001  # Time step
+    start_point: np.ndarray = field(default_factory=lambda: np.array([-1.0, 0.0, 0.0]))
+    end_point: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
+    integration_method: str = 'leapfrog'
+    applied_force: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
+    dark_mode: bool = True
 
 class ForceHandler:
     """Handles force application and state management."""
-
     def __init__(self, physics, objects, dark_mode=True):
         """
         Initialize the force handler with default settings.
@@ -143,28 +162,6 @@ class ForceHandler:
         # Clear forces from all objects
         for obj_id in range(len(self.objects)):
             self.physics.clear_force(obj_id)
-
-class ViewPreset(Enum):
-    """Predefined view angles for the simulation."""
-    DEFAULT = {"name": "Default", "azim": 45, "elev": 15}
-    TOP = {"name": "Top (XY)", "azim": 0, "elev": 90}
-    FRONT = {"name": "Front (XZ)", "azim": 0, "elev": 0}
-    SIDE = {"name": "Side (YZ)", "azim": 90, "elev": 0}
-    ISOMETRIC = {"name": "Isometric", "azim": 45, "elev": 35}
-    FREE = {"name": "Free", "azim": None, "elev": None}
-
-@dataclass
-class SimulationParameters:
-    """Parameters for string simulation configuration."""
-    num_segments: int = 50  # Number of segments in the string
-    spring_constant: float = 1000.0  # Spring constant (k)
-    mass: float = 0.01  # Mass of each point
-    dt: float = 0.0001  # Time step
-    start_point: np.ndarray = field(default_factory=lambda: np.array([-1.0, 0.0, 0.0]))
-    end_point: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
-    integration_method: str = 'leapfrog'
-    applied_force: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
-    dark_mode: bool = True
 
 class StringSimulationSetup:
     """Setup GUI for string simulation configuration."""
@@ -350,13 +347,10 @@ class StringSimulationSetup:
             force_magnitude = self.force_magnitude_var.get()
             if force_magnitude < 0:
                 raise ValueError("Force magnitude cannot be negative")
-
             return True
 
-        except tk.TkError:
-            messagebox.showerror("Invalid Input", "Please enter valid numeric values")
-            return False
         except ValueError as e:
+            # Show the error as a popup
             messagebox.showerror("Invalid Parameters", str(e))
             return False
 
@@ -384,11 +378,6 @@ class StringSimulationSetup:
         """Run the GUI and return the simulation parameters."""
         self.root.mainloop()
         return self.simulation_params
-
-def setup_simulation():
-    """Create and run the simulation setup GUI."""
-    setup = StringSimulationSetup()
-    return setup.get_parameters()
 
 class SimulationVisualizer:
     """Main visualization class handling display and interaction."""
