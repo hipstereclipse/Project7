@@ -3,7 +3,6 @@ from typing import List, Optional, Dict
 from Mass import SimulationObject
 from Integrator import INTEGRATORS
 
-
 class PhysicsEngine:
     """Physics engine for string simulation using Hooke's Law."""
 
