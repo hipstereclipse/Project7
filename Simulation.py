@@ -97,11 +97,18 @@ class StringSimulation:
         return SimulationVisualizer(
             physics_model=self.physics,
             objects=self.masses,
-            dark_mode=self.params.dark_mode
+            dark_mode=self.params.dark_mode,
+            integration_method=self.params.integration_method  # Pass the integration method
         )
 
     def run(self):
-        """Run the simulation."""
+        """
+        Run the simulation.
+
+        Returns:
+            bool: True if the simulation should restart, False otherwise
+        """
+
         def on_key(event):
             """Handle keyboard input."""
             if event.key == ' ':  # Spacebar applies vertical force to middle mass
@@ -113,5 +120,5 @@ class StringSimulation:
         # Connect keyboard handler
         self.visualizer.fig.canvas.mpl_connect('key_press_event', on_key)
 
-        # Start animation
-        self.visualizer.animate()
+        # Start animation and return restart flag
+        return self.visualizer.animate()

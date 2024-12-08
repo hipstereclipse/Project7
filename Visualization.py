@@ -159,7 +159,6 @@ class SimulationParameters:
     applied_force: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
     dark_mode: bool = True
 
-
 class StringSimulationSetup:
     """Setup GUI for string simulation configuration."""
 
@@ -379,7 +378,6 @@ class StringSimulationSetup:
         self.root.mainloop()
         return self.simulation_params
 
-
 def setup_simulation():
     """Create and run the simulation setup GUI."""
     setup = StringSimulationSetup()
@@ -388,44 +386,48 @@ def setup_simulation():
 class SimulationVisualizer:
     """Main visualization class handling display and interaction."""
 
-    def __init__(self, physics_model, objects: List, dark_mode: bool = True):
+    def __init__(self, physics_model, objects: List, dark_mode: bool = True, integration_method: str = 'leapfrog'):
         """
-        Initialize the visualizer with default settings.
+        Initialize the visualizer with default settings and store simulation parameters.
 
         Args:
             physics_model: The physics engine or model managing object dynamics.
             objects: List of objects to visualize.
             dark_mode: Whether to use dark mode for the UI.
+            integration_method: The integration method being used (e.g., 'leapfrog', 'rk2').
         """
-        self.physics = physics_model  # Reference to the physics model
-        self.objects = objects  # List of objects in the simulation
-        self.dark_mode = dark_mode  # Flag for dark mode
-        self.paused = False  # Whether the simulation is paused
-        self.rotating = False  # Flag for camera rotation
-        self.panning = False  # Flag for camera panning
-        self.plots = {}  # Storage for plot elements (scatter, lines)
-        self.simulation_time = 0.0  # Current simulation time
-        self.iteration_count = 100  # Default number of physics iterations per frame
+        self.physics = physics_model
+        self.objects = objects
+        self.dark_mode = dark_mode
+        self.paused = False
+        self.rotating = False
+        self.panning = False
+        self.plots = {}
+        self.simulation_time = 0.0
+        self.iteration_count = 100
 
-        # Save initial object states (positions and velocities).
+        # Store the integration method name directly
+        self.integration_method = integration_method
+
+        # Save initial object states
         self.original_positions = [obj.position.copy() for obj in objects]
         self.original_velocities = [obj.velocity.copy() for obj in objects]
-        self.initial_physics_time = physics_model.time  # Initial time in the physics engine.
+        self.initial_physics_time = physics_model.time
 
-        # Initialize the force handler.
+        # Initialize the force handler
         self.force_handler = ForceHandler(physics_model, objects, dark_mode)
 
-        # Camera settings for visualization.
+        # Camera settings
         self.camera = {
-            'distance': 2.0,  # Default camera distance from origin.
-            'azimuth': 45,  # Azimuth angle for the camera view.
-            'elevation': 15,  # Elevation angle for the camera view.
-            'rotation_speed': 0.3,  # Speed of camera rotation.
-            'zoom_speed': 0.1,  # Speed of camera zoom.
-            'target': np.zeros(3)  # Point to center the camera on.
+            'distance': 2.0,
+            'azimuth': 45,
+            'elevation': 15,
+            'rotation_speed': 0.3,
+            'zoom_speed': 0.1,
+            'target': np.zeros(3)
         }
 
-        # Set up the visualization environment.
+        # Set up the visualization environment
         self.setup_visualization()
 
     def setup_visualization(self):
@@ -473,7 +475,8 @@ class SimulationVisualizer:
             ('reset_button', 'Reset', 0.35),
             ('view_button', 'View: Default', 0.46),
             ('zoom_button', 'Zoom: Fit All', 0.57),
-            ('theme_button', 'Theme', 0.68)
+            ('theme_button', 'Theme', 0.68),
+            ('setup_button', 'Return to Setup', 0.79)  # New Return to Setup button
         ]
 
         for btn_name, label, x_pos in button_configs:
@@ -486,6 +489,7 @@ class SimulationVisualizer:
         self.view_button.on_clicked(self.cycle_view)
         self.zoom_button.on_clicked(self.cycle_zoom)
         self.theme_button.on_clicked(self.toggle_theme)
+        self.setup_button.on_clicked(self.return_to_setup)  # Connect new button callback
 
         # Force controls header
         self.fig.text(left_panel_start, 0.9, 'Force Controls', color=text_color, fontsize=10)
@@ -550,6 +554,11 @@ class SimulationVisualizer:
         )
         self.continuous_force_button.on_clicked(self.toggle_continuous_force)
 
+    def return_to_setup(self, event):
+        """Handle the return to setup button click."""
+        self.should_restart = True  # Set the restart flag
+        plt.close(self.fig)  # Close the current simulation window
+
     def setup_plots(self):
         """Initialize plot elements for visualization."""
         for i, obj in enumerate(self.objects):
@@ -597,8 +606,10 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def set_simulation_speed(self, val):
-        """Set the number of physics iterations per frame."""
+        """Set the number of physics iterations per frame and update related values."""
         self.iteration_count = int(val)
+        # Force an immediate update of the info display when speed changes
+        self.update_info()
 
     def update_frame(self, frame):
         """Update animation frame."""
@@ -640,10 +651,19 @@ class SimulationVisualizer:
                 plots['line'].set_3d_properties([obj.position[2], next_obj.position[2]])
 
     def update_info(self):
-        """Update information display."""
+        """Update information display with enhanced simulation details."""
+        # Calculate effective dt per frame
+        dt_per_frame = self.physics.dt * self.iteration_count
+
+        # Format the integration method name for display
+        method_name = self.integration_method.replace('_', ' ').title()
+
         info_text = (
             f"View: {self.view_button.label.get_text().split(': ')[1]}\n"
             f"{'PAUSED' if self.paused else 'RUNNING'}\n"
+            f"Integration: {method_name}\n"
+            f"dt/step: {self.physics.dt:.6f}s\n"
+            f"dt/frame: {dt_per_frame:.6f}s\n"
             f"Steps per Frame: {self.iteration_count}\n"
             f"Selected Object: {self.force_handler.selected_object}\n"
             f"Force Mode: {'Continuous' if self.force_handler.continuous else 'Single'}\n"
@@ -875,6 +895,7 @@ class SimulationVisualizer:
             self.zoom_button.label.set_text('Zoom: Custom')
             self.update_camera()
 
+
     def animate(self, interval: int = 20):
         """Start the animation."""
         self.anim = FuncAnimation(
@@ -884,3 +905,4 @@ class SimulationVisualizer:
             blit=False
         )
         plt.show()
+        return self.should_restart  # Return whether we should restart setup
