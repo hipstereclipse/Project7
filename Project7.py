@@ -1,34 +1,31 @@
 import numpy as np
 from Simulation import StringSimulation, SimulationParameters
-
-def easy_select():
-    easynum = 4
-    if easynum == 1:
-        return 'euler'
-    elif easynum == 2:
-        return  'rk2'
-    elif easynum == 3:
-        return  'euler_cromer'
-    elif easynum == 4:
-        return  'leapfrog'
-    else:
-        return 'rk4'
+from Visualization import StringSimulationSetup
 
 def main():
     """Main function to run the simulation."""
-    # Lets me make some different simulation parameters easily
-    params = SimulationParameters(
-        num_segments=10,  # Number of segments (spaces in between objects)
-        spring_constant=1000.0,  # Strong springs for stability
-        applied_force = np.array([0.0, 0.0, 10.0]),
-        mass=0.001,  # Mass for each point
-        dt=0.0001,  # Small time step for simulation stability
-        start_point=np.array([-1.0, 0.0, 0.0]),  # Start at -1 on x-axis
-        end_point=np.array([1.0, 0.0, 0.0]),  # End at +1 on x-axis
-        integration_method= easy_select()
-    )
+    # Create and run the setup GUI to get simulation parameters
+    setup = StringSimulationSetup()
+    params = setup.get_parameters()
 
-    # Creates and runs the simulation
+    # Check if the user closed the window without starting
+    if params is None:
+        print("Simulation cancelled by user")
+        return
+
+    print("\nStarting simulation with parameters:")
+    print(f"Number of segments: {params.num_segments}")
+    print(f"Spring constant: {params.spring_constant}")
+    print(f"Mass per point: {params.mass}")
+    print(f"Time step: {params.dt}")
+    print(f"Integration method: {params.integration_method}")
+    print("\nControls:")
+    print("- Left click and drag: Rotate view")
+    print("- Scroll wheel: Zoom in/out")
+    print("- Space bar: Apply vertical force to middle mass")
+    print("- 'p': Pause/Resume simulation")
+
+    # Create and run the simulation with the selected parameters
     simulation = StringSimulation(params)
     simulation.run()
 

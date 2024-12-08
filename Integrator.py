@@ -167,58 +167,52 @@ def rk4_step(positions: np.ndarray, velocities: np.ndarray, accelerations: np.nd
     Returns:
         Updated positions & velocities where energy is conserved and the calculation is accurate to the fourth order
     """
-    # Our temp then final values
+    # Weighting for our symplectic RK4
+    w1 = 1.0 / (2.0 - 2.0 ** (1.0 / 3.0))
+    w0 = 1.0 - 2.0 * w1
+
+    # Creates arrays for intermediate steps
     new_positions = positions.copy()
     new_velocities = velocities.copy()
 
-    # Stores initial values for later use in the method
-    init_positions = positions.copy()
-    init_velocities = velocities.copy()
-
-    # First RK stage - quarter step
-    # Updates positions and velocities for k1 calculation
+    # First symplectic step with weight w1
     for i in range(len(positions)):
-        if not fixed_masses[i]:  # Skips the fixed masses
-            new_positions[i] += velocities[i] * (dt / 4)  # Quarter position step
-            new_velocities[i] += accelerations[i] * (dt / 4)  # Quarter velocity step
+        if not fixed_masses[i]:
+            # First half position update
+            new_positions[i] += 0.5 * w1 * dt * velocities[i]
 
-    # Gets k1 accelerations at new positions
-    k1_accelerations = get_accelerations(new_positions)
+            # Full velocity update using accelerations at intermediate position
+            acc = get_accelerations(new_positions)[i]
+            new_velocities[i] += w1 * dt * acc
 
-    # Second RK stage - quarter to half step
-    # Uses k1 values to get to midpoint
+            # Second half position update with updated velocity
+            new_positions[i] += 0.5 * w1 * dt * new_velocities[i]
+
+    # Middle symplectic step with weight w0
     for i in range(len(positions)):
-        if not fixed_masses[i]:  # Skips the fixed masses
-            new_positions[i] = init_positions[i] + (init_velocities[i] + k1_accelerations[i] * dt / 8) * (dt / 2)
-            new_velocities[i] = init_velocities[i] + k1_accelerations[i] * (dt / 2)
+        if not fixed_masses[i]:
+            # First half position update
+            new_positions[i] += 0.5 * w0 * dt * new_velocities[i]
 
-    # Gets k2 accelerations at midpoint
-    k2_accelerations = get_accelerations(new_positions)
+            # Full velocity update using accelerations at intermediate position
+            acc = get_accelerations(new_positions)[i]
+            new_velocities[i] += w0 * dt * acc
 
-    # Third RK stage - half to three-quarters step
-    # Uses k2 values to advance further
+            # Second half position update with updated velocity
+            new_positions[i] += 0.5 * w0 * dt * new_velocities[i]
+
+    # Final symplectic step with weight w1
     for i in range(len(positions)):
-        if not fixed_masses[i]:  # Skips the fixed masses
-            new_positions[i] = init_positions[i] + (init_velocities[i] + k2_accelerations[i] * dt / 8) * (3 * dt / 4)
-            new_velocities[i] = init_velocities[i] + k2_accelerations[i] * (3 * dt / 4)
+        if not fixed_masses[i]:
+            # First half position update
+            new_positions[i] += 0.5 * w1 * dt * new_velocities[i]
 
-    # Gets k3 accelerations at three-quarter point
-    k3_accelerations = get_accelerations(new_positions)
+            # Full velocity update using accelerations at intermediate position
+            acc = get_accelerations(new_positions)[i]
+            new_velocities[i] += w1 * dt * acc
 
-    # Fourth RK stage - full step
-    # Combines all previous stages for final update
-    for i in range(len(positions)):
-        if not fixed_masses[i]:  # Skips the fixed masses
-            # Final position using weighted average of all velocity contributions
-            new_positions[i] = init_positions[i] + dt * (
-                    init_velocities[i] +
-                    (k1_accelerations[i] + 2 * k2_accelerations[i] + k3_accelerations[i]) * dt / 24
-            )
-
-            # Final velocity using weighted average of all acceleration contributions
-            new_velocities[i] = init_velocities[i] + dt * (
-                    k1_accelerations[i] + 2 * k2_accelerations[i] + k3_accelerations[i]
-            ) / 6
+            # Second half position update with updated velocity
+            new_positions[i] += 0.5 * w1 * dt * new_velocities[i]
 
     return new_positions, new_velocities
 

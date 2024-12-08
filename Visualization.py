@@ -7,6 +7,11 @@ from matplotlib.widgets import Button, Slider, RadioButtons
 from enum import Enum
 from typing import List
 from mpl_toolkits.mplot3d import Axes3D
+import tkinter as tk
+from tkinter import ttk, messagebox
+from dataclasses import dataclass, field
+import numpy as np
+from typing import Optional
 
 class ForceHandler:
     """Handles force application and state management."""
@@ -140,6 +145,245 @@ class ViewPreset(Enum):
     SIDE = {"name": "Side (YZ)", "azim": 90, "elev": 0}
     ISOMETRIC = {"name": "Isometric", "azim": 45, "elev": 35}
     FREE = {"name": "Free", "azim": None, "elev": None}
+
+@dataclass
+class SimulationParameters:
+    """Parameters for string simulation configuration."""
+    num_segments: int = 50  # Number of segments in the string
+    spring_constant: float = 1000.0  # Spring constant (k)
+    mass: float = 0.01  # Mass of each point
+    dt: float = 0.0001  # Time step
+    start_point: np.ndarray = field(default_factory=lambda: np.array([-1.0, 0.0, 0.0]))
+    end_point: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
+    integration_method: str = 'leapfrog'
+    applied_force: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
+    dark_mode: bool = True
+
+
+class StringSimulationSetup:
+    """Setup GUI for string simulation configuration."""
+
+    def __init__(self):
+        """Initialize the setup GUI."""
+        self.root = tk.Tk()
+        self.root.title("String Simulation Setup")
+
+        # Calculate window size - 40% width, 60% height of screen
+        window_width = int(self.root.winfo_screenwidth() * 0.4)
+        window_height = int(self.root.winfo_screenheight() * 0.6)
+        x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        # Initialize variables
+        self.num_segments_var = tk.IntVar(value=25)
+        self.spring_constant_var = tk.DoubleVar(value=1000.0)
+        self.mass_var = tk.DoubleVar(value=0.01)
+        self.dt_var = tk.DoubleVar(value=0.0001)
+        self.integration_var = tk.StringVar(value='leapfrog')
+        self.force_magnitude_var = tk.DoubleVar(value=1.0)
+        self.dark_mode_var = tk.BooleanVar(value=True)
+
+        # Store the final parameters
+        self.simulation_params = None
+
+        # Setup the GUI elements
+        self.setup_gui()
+
+    def setup_gui(self):
+        """Setup the main GUI elements."""
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.grid(sticky="nsew")
+
+        # Header
+        header_frame = ttk.Frame(main_frame)
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(header_frame, text="String Simulation Setup",
+                  font=("Arial", 14, "bold")).pack()
+        ttk.Label(header_frame,
+                  text="Configure simulation parameters",
+                  font=("Arial", 10)).pack()
+
+        # Parameters notebook
+        notebook = ttk.Notebook(main_frame)
+        notebook.grid(row=1, column=0, sticky="nsew", pady=5)
+
+        # Basic parameters tab
+        basic_frame = ttk.Frame(notebook, padding="10")
+        notebook.add(basic_frame, text="Basic Parameters")
+        self.setup_basic_parameters(basic_frame)
+
+        # Advanced parameters tab
+        advanced_frame = ttk.Frame(notebook, padding="10")
+        notebook.add(advanced_frame, text="Advanced Parameters")
+        self.setup_advanced_parameters(advanced_frame)
+
+        # Start button
+        start_button = ttk.Button(
+            main_frame,
+            text="Start Simulation",
+            command=self.start_simulation,
+            style="Accent.TButton"
+        )
+        start_button.grid(row=2, column=0, pady=10)
+
+        # Configure grid weights
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
+    def setup_basic_parameters(self, parent):
+        """Setup basic simulation parameters."""
+        # String properties
+        props_frame = ttk.LabelFrame(parent, text="String Properties", padding="10")
+        props_frame.pack(fill="x", padx=5, pady=5)
+
+        # Number of segments
+        ttk.Label(props_frame, text="Number of segments:").grid(row=0, column=0, padx=5, pady=5)
+        segments_entry = ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10)
+        segments_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Spring constant
+        ttk.Label(props_frame, text="Spring constant (N/m):").grid(row=1, column=0, padx=5, pady=5)
+        spring_entry = ttk.Entry(props_frame, textvariable=self.spring_constant_var, width=10)
+        spring_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Mass per point
+        ttk.Label(props_frame, text="Mass per point (kg):").grid(row=2, column=0, padx=5, pady=5)
+        mass_entry = ttk.Entry(props_frame, textvariable=self.mass_var, width=10)
+        mass_entry.grid(row=2, column=1, padx=5, pady=5)
+
+        # Integration method
+        method_frame = ttk.LabelFrame(parent, text="Integration Method", padding="10")
+        method_frame.pack(fill="x", padx=5, pady=5)
+
+        methods = ['euler', 'euler_cromer', 'rk2', 'leapfrog', 'rk4']
+        for i, method in enumerate(methods):
+            ttk.Radiobutton(
+                method_frame,
+                text=method.replace('_', ' ').title(),
+                value=method,
+                variable=self.integration_var
+            ).grid(row=i, column=0, padx=5, pady=2, sticky="w")
+
+        # Add method descriptions
+        descriptions = {
+            'euler': "Simple first-order method (fastest but least accurate)",
+            'euler_cromer': "Modified Euler method with better energy conservation",
+            'rk2': "Second-order Runge-Kutta method",
+            'leapfrog': "Symplectic method with good energy conservation",
+            'rk4': "Fourth-order Runge-Kutta method (most accurate but slowest)"
+        }
+
+        for i, method in enumerate(methods):
+            ttk.Label(
+                method_frame,
+                text=descriptions[method],
+                font=("Arial", 8),
+                foreground="gray"
+            ).grid(row=i, column=1, padx=5, pady=2, sticky="w")
+
+    def setup_advanced_parameters(self, parent):
+        """Setup advanced simulation parameters."""
+        # Time step configuration
+        time_frame = ttk.LabelFrame(parent, text="Time Settings", padding="10")
+        time_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(time_frame, text="Time step (dt):").grid(row=0, column=0, padx=5, pady=5)
+        dt_entry = ttk.Entry(time_frame, textvariable=self.dt_var, width=10)
+        dt_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Force configuration
+        force_frame = ttk.LabelFrame(parent, text="Force Settings", padding="10")
+        force_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(force_frame, text="Force magnitude (N):").grid(row=0, column=0, padx=5, pady=5)
+        force_entry = ttk.Entry(force_frame, textvariable=self.force_magnitude_var, width=10)
+        force_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Display settings
+        display_frame = ttk.LabelFrame(parent, text="Display Settings", padding="10")
+        display_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Checkbutton(
+            display_frame,
+            text="Dark Mode",
+            variable=self.dark_mode_var
+        ).pack(padx=5, pady=5)
+
+        # Add tooltips and help text
+        help_frame = ttk.Frame(parent)
+        help_frame.pack(fill="x", padx=5, pady=10)
+        ttk.Label(
+            help_frame,
+            text="Tip: Smaller time steps give more accurate results but run slower",
+            font=("Arial", 8),
+            foreground="gray"
+        ).pack(pady=2)
+
+    def validate_parameters(self):
+        """Validate all simulation parameters."""
+        try:
+            num_segments = self.num_segments_var.get()
+            if num_segments < 2:
+                raise ValueError("Number of segments must be at least 2")
+
+            spring_constant = self.spring_constant_var.get()
+            if spring_constant <= 0:
+                raise ValueError("Spring constant must be positive")
+
+            mass = self.mass_var.get()
+            if mass <= 0:
+                raise ValueError("Mass must be positive")
+
+            dt = self.dt_var.get()
+            if dt <= 0:
+                raise ValueError("Time step must be positive")
+
+            force_magnitude = self.force_magnitude_var.get()
+            if force_magnitude < 0:
+                raise ValueError("Force magnitude cannot be negative")
+
+            return True
+
+        except tk.TkError:
+            messagebox.showerror("Invalid Input", "Please enter valid numeric values")
+            return False
+        except ValueError as e:
+            messagebox.showerror("Invalid Parameters", str(e))
+            return False
+
+    def start_simulation(self):
+        """Start the simulation with configured parameters."""
+        if not self.validate_parameters():
+            return
+
+        # Create simulation parameters
+        self.simulation_params = SimulationParameters(
+            num_segments=self.num_segments_var.get(),
+            spring_constant=self.spring_constant_var.get(),
+            mass=self.mass_var.get(),
+            dt=self.dt_var.get(),
+            integration_method=self.integration_var.get(),
+            applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
+            dark_mode=self.dark_mode_var.get()
+        )
+
+        # Close the setup window
+        self.root.quit()
+        self.root.destroy()
+
+    def get_parameters(self):
+        """Run the GUI and return the simulation parameters."""
+        self.root.mainloop()
+        return self.simulation_params
+
+
+def setup_simulation():
+    """Create and run the simulation setup GUI."""
+    setup = StringSimulationSetup()
+    return setup.get_parameters()
 
 class SimulationVisualizer:
     """Main visualization class handling display and interaction."""

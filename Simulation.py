@@ -26,7 +26,7 @@ def default_force_applied() -> np.ndarray:
 @dataclass
 class SimulationParameters:
     """Parameters for string simulation configuration."""
-    num_segments: int = 50  # Number of segments in the string
+    num_segments: int = 25  # Number of segments in the string
     spring_constant: float = 1000.0  # Spring constant (k)
     applied_force: np.ndarray = field(default_factory=default_force_applied)
     mass: float = 0.01  # Mass of each point
@@ -39,14 +39,14 @@ class SimulationParameters:
 class StringSimulation:
     """Class to handle the string simulation setup and execution."""
 
-    def __init__(self, params: Optional[SimulationParameters] = None):
+    def __init__(self, params):
         """
         Initializes string simulation with given parameters.
 
         Args:
-            params: Configuration parameters for the simulation
+            params: SimulationParameters object containing configuration
         """
-        self.params = params or SimulationParameters()
+        self.params = params
 
         # Create string elements
         self.masses, self.equilibrium_length = self.create_string()
@@ -57,12 +57,11 @@ class StringSimulation:
         """Creates string of masses connected by springs."""
         masses = []
 
-        # Calculates total length and equilibrium length between masses
-        # Uses numpy's linalg.norm to calculate the distance between start and end points
+        # Calculate total length and equilibrium length between masses
         total_length = np.linalg.norm(self.params.end_point - self.params.start_point)
         equilibrium_length = total_length / self.params.num_segments
 
-        # Creates masses along the string
+        # Create masses along the string
         for i in range(self.params.num_segments + 1):
             # Calculate position as linear interpolation between start and end points
             t = i / self.params.num_segments
@@ -73,8 +72,8 @@ class StringSimulation:
                 x=position[0],
                 y=position[1],
                 z=position[2],
-                vx=0.0, vy=0.0, vz=0.0,  # Initial velocities are zero
-                ax=0.0, ay=0.0, az=0.0,  # Initial accelerations are zero
+                vx=0.0, vy=0.0, vz=0.0,
+                ax=0.0, ay=0.0, az=0.0,
                 mass=self.params.mass,
                 obj_id=i,
                 pinned=(i == 0 or i == self.params.num_segments)  # Pin the ends
@@ -98,46 +97,21 @@ class StringSimulation:
         return SimulationVisualizer(
             physics_model=self.physics,
             objects=self.masses,
-            dark_mode=True  # Default to dark mode
+            dark_mode=self.params.dark_mode
         )
-
-    def apply_force(self, mass_index: int, force: np.ndarray,
-                   duration: float = 0.05) -> None:
-        """
-        Applies force to a specific mass.
-
-        Args:
-            mass_index: Index of mass to apply force to
-            force: Force vector as [fx, fy, fz]
-            duration: Duration to apply force
-        """
-        if 0 < mass_index < len(self.masses) - 1:  # Doesn't apply to fixed ends
-            self.physics.apply_force(mass_index, force, duration)
 
     def run(self):
         """Run the simulation."""
-        # Prints test parameters and instructions on how to use interface included in my Visualization file
-        print("Starting simulation...")
-        print(f"Number of segments: {self.params.num_segments}")
-        print(f"Spring constant: {self.params.spring_constant}")
-        print(f"Mass per point: {self.params.mass}")
-        print(f"Time step: {self.params.dt}")
-        print("\nControls:")
-        print("- Left click and drag: Rotate view")
-        print("- Scroll wheel: Zoom in/out")
-        print("- Space bar: Apply vertical force to middle mass")
-        print("- 'p': Pause/Resume simulation")
-
         def on_key(event):
             """Handle keyboard input."""
             if event.key == ' ':  # Spacebar applies vertical force to middle mass
-                middle_index = len(self.masses) // 2 # Applies force to midpoint on string
-                self.apply_force(middle_index, self.params.applied_force)
-            elif event.key == 'p':  # 'p' lets you toggle pause
+                middle_index = len(self.masses) // 2
+                self.physics.apply_force(middle_index, self.params.applied_force)
+            elif event.key == 'p':  # 'p' toggles pause
                 self.visualizer.toggle_pause(None)
 
-        # Connects keyboard handler
+        # Connect keyboard handler
         self.visualizer.fig.canvas.mpl_connect('key_press_event', on_key)
 
-        # Starts animation
+        # Start animation
         self.visualizer.animate()
