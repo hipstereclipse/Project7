@@ -83,22 +83,26 @@ class ForceHandler:
     def toggle(self):
         """
         Toggle the force state between active and inactive.
+        If force is already active, cancels it immediately.
 
         Returns:
             A tuple with the new label and color for the force button, or None.
         """
-        if self.continuous:
+        if self.active:
+            # If force is active, cancel it immediately
+            self.deactivate()
+            return ('Apply Force', 'darkgray')
+        elif self.continuous:
             # Toggle continuous force state
-            self.active = not self.active
-            return ('Force Locked', 'red') if self.active else ('Apply Force', 'darkgray')
-        elif not self.active:
+            self.active = True
+            return ('Force Locked', 'red')
+        else:
             # Initialize a new single-shot force
             self.active = True
             self.duration_remaining = self.duration  # Reset duration for new force
-
-            # Apply initial force with the full duration
             self.apply(self.duration)
             return ('Force Active', 'lightgreen')
+
         return None
 
     def apply(self, duration=None):
@@ -131,9 +135,12 @@ class ForceHandler:
     def deactivate(self):
         """
         Deactivate all forces and reset the force state.
+        Also resets the duration remaining to prevent any lingering effects.
         """
         self.active = False
-        self.duration_remaining = 0.0
+        self.duration_remaining = 0.0  # Immediately end any ongoing force
+
+        # Clear forces from all objects
         for obj_id in range(len(self.objects)):
             self.physics.clear_force(obj_id)
 
@@ -768,14 +775,19 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def toggle_force(self, event):
-        """Toggle force application."""
-        result = self.force_handler.toggle()  # No longer passing simulation_time
+        """
+        Toggle force application. If force is active, clicking again will cancel it.
+        """
+        result = self.force_handler.toggle()
         if result:
             label, color = result
             self.force_button.label.set_text(label)
             self.force_button.color = color
+
+            # Only apply force if we're activating (not deactivating)
             if self.force_handler.active:
-                self.force_handler.apply(self.simulation_time)
+                self.force_handler.apply()
+
             self.fig.canvas.draw_idle()
 
     def toggle_continuous_force(self, event):
