@@ -30,6 +30,10 @@ class PhysicsEngine:
         self.force_end_times = {obj.obj_id: 0.0 for obj in objects}  # When forces should end
         self.continuous_forces = {obj.obj_id: False for obj in objects}  # Whether forces are continuous
 
+        # Add data recorder
+        from data_handling import SimulationDataRecorder
+        self.data_recorder = SimulationDataRecorder(objects)
+
     def apply_force(self, obj_id: int, force: np.ndarray, duration: Optional[float] = None):
         """
         Applies an external force to a specific mass for a given duration.
@@ -164,3 +168,6 @@ class PhysicsEngine:
 
         # Advance simulation time
         self.time += self.dt
+
+        # Record data after updating positions
+        self.data_recorder.record_step(self.time, self.objects)

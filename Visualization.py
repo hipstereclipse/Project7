@@ -1,17 +1,18 @@
 """Enhanced visualization system with integrated force handling."""
 
-import numpy as np
+import time
+import tkinter as tk
+from dataclasses import dataclass
+from dataclasses import field
+from enum import Enum
+from tkinter import ttk, messagebox
+from typing import List
+
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
-from enum import Enum
-from typing import List
-from mpl_toolkits.mplot3d import Axes3D
-import tkinter as tk
-from tkinter import ttk, messagebox
-from dataclasses import dataclass, field
-import numpy as np
-from typing import Optional
+
 
 class ViewPreset(Enum):
     """Predefined view angles for the simulation."""
@@ -439,6 +440,14 @@ class SimulationVisualizer:
             verticalalignment='top'
         )
 
+        # Add FPS tracking variables
+        self.last_frame_time = time.time()
+        self.fps = 0
+        self.fps_update_interval = 0.5  # Update FPS every half second
+        self.frame_times = []  # Store recent frame times for averaging
+        self.max_frame_times = 30  # Number of frames to average
+        self.animation_frame_count = 0
+
     def setup_visualization(self):
         """Set up visualization window and controls."""
         # Apply the appropriate matplotlib style (dark or light mode)
@@ -637,72 +646,84 @@ class SimulationVisualizer:
 
         # Pause the simulation first
         if not self.paused:
-            self.toggle_pause(None)  # Pass None since we're not handling a direct button event
+            self.toggle_pause(None)
             self.play_button.label.set_text('Resume')
             self.fig.canvas.draw_idle()
 
         # Create temporary root window for file dialog
         root = tk.Tk()
-        root.withdraw()  # Hide the root window
+        root.withdraw()
 
-        # Get file name from user with file dialog
+        # Get file name from user
         file_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            title="Save Simulation Data"
+            title="Save Simulation Data History"
         )
 
-        # If user didn't cancel the dialog
         if file_path:
             try:
-                # Import and use the save_simulation_data function
-                from data_handling import save_simulation_data
-                save_simulation_data(file_path, self.physics.time, self.objects)
+                # Save the recorded data history
+                self.physics.data_recorder.save_to_csv(file_path)
 
                 # Show success popup
                 messagebox.showinfo(
                     "Success",
-                    f"Simulation data has been saved successfully to:\n{file_path}"
+                    f"Simulation history has been saved successfully to:\n{file_path}\n\n"
+                    f"Total time steps saved: {len(self.physics.data_recorder.time_history)}"
                 )
 
             except Exception as e:
-                # Show error popup if something goes wrong
+                # Show error popup
                 messagebox.showerror(
                     "Error",
                     f"An error occurred while saving the data:\n{str(e)}"
                 )
 
-        # Cleanup the temporary root window
         root.destroy()
 
     def update_frame(self, frame):
         """
-        Update animation frame with proper force duration checking.
-
-        Args:
-            frame: The current frame number (provided by FuncAnimation)
-
-        Returns:
-            Updated plot elements for the animation
+        Update animation frame with proper timing tracking.
         """
+        # Only update animation frame count and FPS when not paused
         if not self.paused:
-            # Use the iteration count from the slider
+            # Update animation frame count
+            self.animation_frame_count += 1
+
+            # Calculate FPS
+            current_time = time.time()
+            frame_time = current_time - self.last_frame_time
+            self.frame_times.append(frame_time)
+
+            # Keep only recent frame times
+            if len(self.frame_times) > self.max_frame_times:
+                self.frame_times.pop(0)
+
+            # Update FPS calculation
+            if current_time - self.last_frame_time >= self.fps_update_interval:
+                if self.frame_times:
+                    avg_frame_time = sum(self.frame_times) / len(self.frame_times)
+                    self.fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+                self.last_frame_time = current_time
+
+            # Run physics steps
             i = self.iteration_count
             while i > 0:
                 self.physics.step()
                 i -= 1
 
-            # Pass the iteration count to check_duration
+            # Check and handle force duration
             if self.force_handler.check_duration(self.iteration_count):
                 self.force_button.label.set_text('Apply Force')
                 self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
                 self.fig.canvas.draw_idle()
 
+            # Apply continuous force if active
             if self.force_handler.continuous and self.force_handler.active:
-                self.force_handler.apply()  # No need to pass simulation_time anymore
+                self.force_handler.apply()
 
-            self.simulation_time += 1
-
+        # Always update the visualization
         self.update_plots()
         self.update_info()
         self.highlight_selected_object()
@@ -725,17 +746,23 @@ class SimulationVisualizer:
 
     def update_info(self):
         """Update information display with enhanced simulation details."""
-        # Original info text update remains the same
+        # Get time info from data recorder
+        time_info = self.physics.data_recorder.get_time_info()
+
+        # Calculate timing information
         dt_per_frame = self.physics.dt * self.iteration_count
         method_name = self.integration_method.replace('_', ' ').title()
 
         info_text = (
             f"View: {self.view_button.label.get_text().split(': ')[1]}\n"
             f"{'PAUSED' if self.paused else 'RUNNING'}\n"
+            f"Animation Frame: {self.animation_frame_count}\n"
+            f"FPS: {self.fps:.1f}\n"
+            f"Simulation Time: {time_info['simulation_time']:.3f}s\n"
             f"Integration: {method_name}\n"
             f"dt/step: {self.physics.dt:.6f}s\n"
             f"dt/frame: {dt_per_frame:.6f}s\n"
-            f"Steps per Frame: {self.iteration_count}\n"
+            f"Physics Steps/Frame: {self.iteration_count}\n"
             f"Selected Object: {self.force_handler.selected_object}\n"
             f"Force Mode: {'Continuous' if self.force_handler.continuous else 'Single'}\n"
             f"Force Status: {'Active' if self.force_handler.active else 'Inactive'}\n"
@@ -815,6 +842,9 @@ class SimulationVisualizer:
         self.force_button.label.set_text('Apply Force')
         self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
         self.fig.canvas.draw_idle()
+
+        # Clear the data history
+        self.physics.data_recorder.clear_history()
 
     def toggle_force(self, event):
         """
