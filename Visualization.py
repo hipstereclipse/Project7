@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from typing import Optional
 
+
 class ForceHandler:
     """Handles force application and state management."""
 
@@ -25,18 +26,17 @@ class ForceHandler:
             objects: List of objects in the simulation.
             dark_mode: Whether to use dark mode for UI elements.
         """
-        self.physics = physics  # Reference to the physics model.
-        self.objects = objects  # List of simulation objects.
-        self.dark_mode = dark_mode  # Flag for UI theme.
+        self.physics = physics  # Reference to the physics model
+        self.objects = objects  # List of simulation objects
+        self.dark_mode = dark_mode  # Flag for UI theme
 
         # Force application state
-        self.active = False  # Whether a force is currently active.
-        self.continuous = False  # Whether the force is continuous or single-shot.
-        self.duration = 1.0  # Duration of force application in seconds.
-        self.duration_remaining = 1.0 # Duration remaining in force application
-        self.amplitude = 10.0  # Magnitude of the force.
-        self.start_time = None  # Timestamp of when the force started.
-        self.selected_object = len(objects) // 2  # Default target object (middle one).
+        self.active = False  # Whether a force is currently active
+        self.continuous = False  # Whether the force is continuous or single-shot
+        self.duration = 0.01  # Duration of force application in seconds
+        self.duration_remaining = 0.01  # Duration remaining in force application
+        self.amplitude = 10.0  # Magnitude of the force
+        self.selected_object = len(objects) // 2  # Default target object (middle one)
 
         # Available force types and directions
         self.types = {
@@ -51,8 +51,34 @@ class ForceHandler:
             'Left/Right (X)': np.array([1.0, 0.0, 0.0]),
             'Front/Back (Y)': np.array([0.0, 1.0, 0.0])
         }
-        self.selected_type = 'Single Mass'  # Default force type.
-        self.selected_direction = 'Up/Down (Z)'  # Default force direction.
+        self.selected_type = 'Single Mass'  # Default force type
+        self.selected_direction = 'Up/Down (Z)'  # Default force direction
+
+    def check_duration(self, iterations_per_frame):
+        """
+        Check if the force duration has expired and update remaining duration.
+
+        Args:
+            iterations_per_frame: Number of physics steps per animation frame
+
+        Returns:
+            True if the force was deactivated, False otherwise.
+        """
+        if not self.continuous and self.active:
+            # Calculate actual time elapsed in this frame
+            time_elapsed = self.physics.dt * iterations_per_frame
+
+            # Update remaining duration
+            self.duration_remaining = max(0.0, self.duration_remaining - time_elapsed)
+
+            # Check if duration has expired
+            if self.duration_remaining <= 0:
+                self.deactivate()
+                return True
+
+            # Apply force with remaining duration
+            self.apply(self.duration_remaining)
+        return False
 
     def toggle(self):
         """
@@ -61,81 +87,55 @@ class ForceHandler:
         Returns:
             A tuple with the new label and color for the force button, or None.
         """
-        import time
-
         if self.continuous:
-            # Continuous force toggles between locked and unlocked states.
+            # Toggle continuous force state
             self.active = not self.active
-            if self.active:
-                self.start_time = time.time()
             return ('Force Locked', 'red') if self.active else ('Apply Force', 'darkgray')
         elif not self.active:
-            # Single force: activate if not already active.
+            # Initialize a new single-shot force
             self.active = True
-            self.start_time = time.time()
+            self.duration_remaining = self.duration  # Reset duration for new force
+
+            # Apply initial force with the full duration
+            self.apply(self.duration)
             return ('Force Active', 'lightgreen')
         return None
 
-    def check_duration(self):
+    def apply(self, duration=None):
         """
-        Check if the force duration has expired.
-
-        Uses the system clock to determine if the elapsed time since force activation
-        exceeds the set duration. Deactivates the force if necessary.
-
-        Returns:
-            True if the force was deactivated, False otherwise.
-        """
-        import time
-
-        if not self.continuous and self.active:
-            elapsed = time.time() - self.start_time
-            if (self.duration - elapsed) >= 0:
-                self.duration_remaining = self.duration - elapsed
-            else:
-                self.duration_remaining = 0
-            if elapsed >= self.duration:
-                self.deactivate()
-                return True
-        return False
-        self.duration_remaining = self.duration
-
-    def apply(self, simulation_time):
-        """
-        Applies the selected force to the simulation.
+        Apply force based on current settings.
 
         Args:
-            simulation_time: Current time in the simulation (used for time-dependent forces).
+            duration: Duration for the force application, or None for continuous forces.
+            Defaults to None which is appropriate for continuous forces.
         """
-        if not self.active:
-            return  # Do nothing if the force is inactive.
-
-        # Determine the direction and magnitude of the force.
         direction = self.directions[self.selected_direction]
-        duration = None if self.continuous else self.duration
 
         if self.selected_type == 'Single Mass':
-            # Constant force applied to a single object.
+            # Apply constant force to selected mass
             force = direction * self.amplitude
             self.physics.apply_force(self.selected_object, force, duration)
+
         elif self.selected_type == 'Sinusoidal':
-            # Sinusoidal force varying with simulation time.
-            magnitude = np.sin(2 * np.pi * simulation_time) * self.amplitude
+            # Apply time-varying sinusoidal force
+            magnitude = np.sin(2 * np.pi * self.physics.time) * self.amplitude
             self.physics.apply_force(self.selected_object, direction * magnitude, duration)
+
         elif self.selected_type == 'Gaussian':
-            # Gaussian-distributed forces applied to all objects.
+            # Apply spatially distributed Gaussian force across multiple masses
             for i in range(1, len(self.objects) - 1):
+                # Calculate Gaussian distribution centered on selected object
                 magnitude = np.exp(-(i - self.selected_object) ** 2 / (len(self.objects) / 8) ** 2) * self.amplitude
                 self.physics.apply_force(i, direction * magnitude, duration)
 
     def deactivate(self):
         """
-        Deactivate all forces and reset the state.
+        Deactivate all forces and reset the force state.
         """
         self.active = False
-        self.start_time = None
+        self.duration_remaining = 0.0
         for obj_id in range(len(self.objects)):
-            self.physics.external_forces[obj_id] = np.zeros(3)
+            self.physics.clear_force(obj_id)
 
 class ViewPreset(Enum):
     """Predefined view angles for the simulation."""
@@ -409,6 +409,9 @@ class SimulationVisualizer:
         # Store the integration method name directly
         self.integration_method = integration_method
 
+        # Add the should_restart flag initialization
+        self.should_restart = False
+
         # Save initial object states
         self.original_positions = [obj.position.copy() for obj in objects]
         self.original_velocities = [obj.velocity.copy() for obj in objects]
@@ -535,9 +538,9 @@ class SimulationVisualizer:
         self.duration_slider = Slider(
             plt.axes([left_panel_start, 0.30, panel_width, 0.02]),
             'Duration',
-            0.1, 10.0,
+            0.01, 10.0,
             valinit=self.force_handler.duration,
-            valfmt='%.1f s'
+            valfmt='%.2f s'
         )
         self.duration_slider.on_changed(self.set_force_duration)
         self.duration_slider.on_changed(self.set_force_duration_remaining)
@@ -614,7 +617,15 @@ class SimulationVisualizer:
         self.update_info()
 
     def update_frame(self, frame):
-        """Update animation frame."""
+        """
+        Update animation frame with proper force duration checking.
+
+        Args:
+            frame: The current frame number (provided by FuncAnimation)
+
+        Returns:
+            Updated plot elements for the animation
+        """
         if not self.paused:
             # Use the iteration count from the slider
             i = self.iteration_count
@@ -622,13 +633,14 @@ class SimulationVisualizer:
                 self.physics.step()
                 i -= 1
 
-            if self.force_handler.check_duration():
+            # Pass the iteration count to check_duration
+            if self.force_handler.check_duration(self.iteration_count):
                 self.force_button.label.set_text('Apply Force')
                 self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
                 self.fig.canvas.draw_idle()
 
             if self.force_handler.continuous and self.force_handler.active:
-                self.force_handler.apply(self.simulation_time)
+                self.force_handler.apply()  # No need to pass simulation_time anymore
 
             self.simulation_time += 1
 
@@ -636,7 +648,7 @@ class SimulationVisualizer:
         self.update_info()
         self.highlight_selected_object()
 
-        return self.plots.values()
+        return list(self.plots.values())
 
     def update_plots(self):
         """Update positions of all plot elements."""
@@ -671,7 +683,7 @@ class SimulationVisualizer:
             f"Force Mode: {'Continuous' if self.force_handler.continuous else 'Single'}\n"
             f"Force Status: {'Active' if self.force_handler.active else 'Inactive'}\n"
             f"Force Type: {self.force_handler.selected_type}\n"
-            f"Duration: {self.force_handler.duration_remaining:.1f}s"
+            f"Duration: {self.force_handler.duration_remaining:.2f}s"
         )
         self.info_text.set_text(info_text)
 
@@ -897,14 +909,22 @@ class SimulationVisualizer:
             self.zoom_button.label.set_text('Zoom: Custom')
             self.update_camera()
 
-
     def animate(self, interval: int = 20):
-        """Start the animation."""
+        """
+        Start the animation with proper frame caching settings.
+
+        Args:
+            interval: Time interval between frames in milliseconds
+
+        Returns:
+            Boolean indicating whether to restart the simulation
+        """
         self.anim = FuncAnimation(
             self.fig,
             self.update_frame,
             interval=interval,
-            blit=False
+            blit=False,
+            cache_frame_data=False  # Prevent the warning about unbounded cache
         )
         plt.show()
-        return self.should_restart  # Return whether we should restart setup
+        return self.should_restart
