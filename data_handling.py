@@ -14,7 +14,13 @@ The module contains two main components:
 
 import csv
 import os
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 from Mass import SimulationObject
 
 
@@ -307,3 +313,288 @@ def get_object_positions(headers: List[str], columns: List[List[float]], obj_id:
         raise ValueError(f"Object ID {obj_id} not found in data")
 
     return columns[x_idx], columns[y_idx], columns[z_idx]
+
+class DataAnalysis:
+    """
+    Analyzes and compares data from multiple string simulation runs.
+
+    This enhanced class can load multiple simulation files and provide comparative
+    analysis between them, helping identify patterns and differences in node behavior
+    across different simulation parameters.
+    """
+
+    def __init__(self):
+        """
+        Initialize the data analysis system to handle multiple simulations.
+
+        The class maintains a dictionary of loaded simulations, each with a unique
+        identifier for easy reference in comparisons.
+        """
+        # Dictionary to store loaded simulation data
+        self.simulations = {}
+
+        # Track metadata about each simulation
+        self.simulation_metadata = {}
+
+    def load_simulation(self, file_path: str, simulation_id: Optional[str] = None) -> str:
+        """
+        Load a simulation data file and assign it an identifier.
+
+        Args:
+            file_path: Path to the CSV file containing simulation data
+            simulation_id: Optional identifier for this simulation. If None,
+                         uses the filename without extension
+
+        Returns:
+            The simulation identifier used to reference this data
+
+        Raises:
+            ValueError: If the CSV file format is invalid
+            FileNotFoundError: If the CSV file doesn't exist
+        """
+        # Create Path object for reliable file handling
+        path = Path(file_path)
+
+        # Generate simulation ID if none provided
+        if simulation_id is None:
+            simulation_id = path.stem
+
+        # Ensure unique identifier
+        if simulation_id in self.simulations:
+            base_id = simulation_id
+            counter = 1
+            while simulation_id in self.simulations:
+                simulation_id = f"{base_id}_{counter}"
+                counter += 1
+
+        try:
+            # Load the CSV file
+            data = pd.read_csv(file_path)
+
+            # Validate data format
+            if not self._validate_data_format(data):
+                raise ValueError(f"CSV file {file_path} does not match expected format")
+
+            # Store the data and extract basic metadata
+            self.simulations[simulation_id] = data
+            self.simulation_metadata[simulation_id] = {
+                'file_path': str(path),
+                'num_frames': len(data),
+                'time_range': (data['Time'].min(), data['Time'].max()),
+                'num_objects': len([col for col in data.columns if 'pos_x' in col])
+            }
+
+            return simulation_id
+
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Could not find CSV file: {file_path}")
+
+    def _validate_data_format(self, data: pd.DataFrame) -> bool:
+        """
+        Validate that a dataframe matches the expected simulation data format.
+
+        Args:
+            data: Pandas DataFrame to validate
+
+        Returns:
+            bool: True if format is valid, False otherwise
+        """
+        expected_columns = ['Time', 'Frame']
+        num_objects = len([col for col in data.columns if 'pos_x' in col])
+
+        for i in range(num_objects):
+            expected_columns.extend([
+                f'obj{i}_pos_x', f'obj{i}_pos_y', f'obj{i}_pos_z',
+                f'obj{i}_vel_x', f'obj{i}_vel_y', f'obj{i}_vel_z',
+                f'obj{i}_acc_x', f'obj{i}_acc_y', f'obj{i}_acc_z'
+            ])
+
+        return all(col in data.columns for col in expected_columns)
+
+    def get_object_trajectory(self, simulation_id: str, obj_id: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Get position data for a specific object in a specific simulation.
+
+        Args:
+            simulation_id: Identifier for the simulation to analyze
+            obj_id: ID of the object to analyze
+
+        Returns:
+            Tuple containing arrays of x, y, and z positions
+
+        Raises:
+            KeyError: If simulation_id is not found
+            ValueError: If object ID is invalid
+        """
+        if simulation_id not in self.simulations:
+            raise KeyError(f"Simulation '{simulation_id}' not found")
+
+        data = self.simulations[simulation_id]
+        num_objects = self.simulation_metadata[simulation_id]['num_objects']
+
+        if obj_id < 0 or obj_id >= num_objects:
+            raise ValueError(f"Invalid object ID. Must be between 0 and {num_objects - 1}")
+
+        x = data[f'obj{obj_id}_pos_x'].values
+        y = data[f'obj{obj_id}_pos_y'].values
+        z = data[f'obj{obj_id}_pos_z'].values
+
+        return x, y, z
+
+    def find_stationary_nodes(self, simulation_id: str, displacement_threshold: float = 0.01) -> Dict[int, np.ndarray]:
+        """
+        Find nodes that remain nearly stationary during a specific simulation.
+
+        Args:
+            simulation_id: Identifier for the simulation to analyze
+            displacement_threshold: Maximum allowed displacement from mean position
+
+        Returns:
+            Dictionary mapping object IDs to their mean positions for stationary nodes
+        """
+        stationary_nodes = {}
+        num_objects = self.simulation_metadata[simulation_id]['num_objects']
+
+        for obj_id in range(num_objects):
+            x, y, z = self.get_object_trajectory(simulation_id, obj_id)
+            positions = np.column_stack([x, y, z])
+
+            mean_pos = np.mean(positions, axis=0)
+            max_displacement = np.max(np.linalg.norm(positions - mean_pos, axis=1))
+
+            if max_displacement <= displacement_threshold:
+                stationary_nodes[obj_id] = mean_pos
+
+        return stationary_nodes
+
+    def compare_stationary_nodes(self, simulation_ids: List[str],
+                                 displacement_threshold: float = 0.01) -> Dict[str, Dict[int, np.ndarray]]:
+        """
+        Compare stationary nodes across multiple simulations.
+
+        Args:
+            simulation_ids: List of simulation identifiers to compare
+            displacement_threshold: Maximum allowed displacement for stationary nodes
+
+        Returns:
+            Dictionary mapping simulation IDs to their stationary node dictionaries
+        """
+        return {
+            sim_id: self.find_stationary_nodes(sim_id, displacement_threshold)
+            for sim_id in simulation_ids
+        }
+
+    def plot_comparative_movement(self, simulation_ids: List[str], obj_ids: Optional[List[int]] = None,
+                                  highlight_stationary: bool = True, displacement_threshold: float = 0.01):
+        """
+        Create a comparative 3D visualization of node movements across multiple simulations.
+
+        Args:
+            simulation_ids: List of simulation identifiers to compare
+            obj_ids: Optional list of object IDs to plot. If None, plots all objects
+            highlight_stationary: Whether to highlight stationary nodes
+            displacement_threshold: Threshold for identifying stationary nodes
+        """
+        # Create figure with subplots for each simulation
+        n_sims = len(simulation_ids)
+        fig = plt.figure(figsize=(6 * n_sims, 8))
+
+        # Create a color map for consistent object colors across plots
+        colors = plt.cm.rainbow(np.linspace(0, 1, max(
+            self.simulation_metadata[sim_id]['num_objects']
+            for sim_id in simulation_ids
+        )))
+
+        for i, sim_id in enumerate(simulation_ids):
+            ax = fig.add_subplot(1, n_sims, i + 1, projection='3d')
+
+            # Get object IDs to plot
+            if obj_ids is None:
+                plot_obj_ids = range(self.simulation_metadata[sim_id]['num_objects'])
+            else:
+                plot_obj_ids = obj_ids
+
+            # Plot movement paths
+            for obj_id in plot_obj_ids:
+                x, y, z = self.get_object_trajectory(sim_id, obj_id)
+                ax.plot(x, y, z, color=colors[obj_id], alpha=0.5,
+                        label=f'Node {obj_id}')
+
+            # Highlight stationary nodes if requested
+            if highlight_stationary:
+                stationary_nodes = self.find_stationary_nodes(sim_id, displacement_threshold)
+                for obj_id, pos in stationary_nodes.items():
+                    if obj_ids is None or obj_id in obj_ids:
+                        ax.scatter(pos[0], pos[1], pos[2],
+                                   color='red', s=100, marker='*',
+                                   label=f'Stationary {obj_id}')
+
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'Simulation: {sim_id}')
+
+            # Add legend if not too many objects
+            if len(plot_obj_ids) <= 10:
+                ax.legend()
+
+        plt.tight_layout()
+        plt.show()
+
+    def plot_displacement_comparison(self, simulation_ids: List[str], obj_id: int):
+        """
+        Create a comparative plot of a specific node's displacement over time
+        across multiple simulations.
+
+        Args:
+            simulation_ids: List of simulation identifiers to compare
+            obj_id: ID of the node to analyze
+        """
+        plt.figure(figsize=(12, 6))
+
+        for sim_id in simulation_ids:
+            # Get position data
+            x, y, z = self.get_object_trajectory(sim_id, obj_id)
+            positions = np.column_stack([x, y, z])
+
+            # Calculate displacement from initial position
+            initial_pos = positions[0]
+            displacements = np.linalg.norm(positions - initial_pos, axis=1)
+
+            # Plot displacement over time
+            time = self.simulations[sim_id]['Time'].values
+            plt.plot(time, displacements, label=sim_id)
+
+        plt.xlabel('Time (s)')
+        plt.ylabel('Displacement from Initial Position')
+        plt.title(f'Node {obj_id} Displacement Comparison')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    def get_simulation_summary(self, simulation_id: str) -> Dict:
+        """
+        Generate a summary of key statistics for a simulation.
+
+        Args:
+            simulation_id: Identifier for the simulation to analyze
+
+        Returns:
+            Dictionary containing summary statistics
+        """
+        if simulation_id not in self.simulations:
+            raise KeyError(f"Simulation '{simulation_id}' not found")
+
+        data = self.simulations[simulation_id]
+
+        # Calculate various statistics
+        stationary_nodes = self.find_stationary_nodes(simulation_id)
+        num_objects = self.simulation_metadata[simulation_id]['num_objects']
+
+        return {
+            'num_frames': len(data),
+            'simulation_time': data['Time'].max() - data['Time'].min(),
+            'num_objects': num_objects,
+            'num_stationary_nodes': len(stationary_nodes),
+            'stationary_node_positions': stationary_nodes
+        }

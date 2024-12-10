@@ -13,6 +13,8 @@ import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
 
+from data_handling import DataAnalysis
+
 
 class ViewPreset(Enum):
     """Predefined view angles for the simulation."""
@@ -1089,3 +1091,334 @@ class SimulationVisualizer:
         )
         plt.show()
         return self.should_restart
+
+class AnalysisVisualizer:
+    """
+    Interactive visualization system for analyzing string simulation data.
+    Provides capabilities for loading, comparing, and analyzing multiple simulation files.
+    """
+
+    def __init__(self):
+        """Initialize the analysis visualization system."""
+        from data_handling import DataAnalysis
+        import tkinter as tk
+        from tkinter import ttk, filedialog, messagebox
+
+        # Create the data analyzer instance
+        self.analyzer = DataAnalysis()
+
+        # Initialize the main window
+        self.root = tk.Tk()
+        self.root.title("String Simulation Analysis")
+
+        # Calculate window size (50% of screen)
+        window_width = int(self.root.winfo_screenwidth() * 0.5)
+        window_height = int(self.root.winfo_screenheight() * 0.5)
+        x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        # Track loaded simulations and their metadata
+        self.loaded_files = {}  # Maps file paths to simulation IDs
+
+        # Setup the GUI
+        self.setup_gui()
+
+    def setup_gui(self):
+        """Set up the main GUI elements."""
+        import tkinter as tk
+        from tkinter import ttk
+
+        # Create main frame with padding
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky="nsew")
+
+        # File management frame
+        file_frame = ttk.LabelFrame(self.main_frame, text="File Management", padding="5")
+        file_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
+
+        ttk.Button(file_frame, text="Load Files",
+                   command=self.load_files).grid(row=0, column=0, padx=5)
+        ttk.Button(file_frame, text="Clear All",
+                   command=self.clear_files).grid(row=0, column=1, padx=5)
+
+        # Create a treeview to display loaded files
+        self.file_tree = ttk.Treeview(file_frame, columns=("path", "nodes", "frames"),
+                                      show="headings", height=3)
+        self.file_tree.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
+        self.file_tree.heading("path", text="File Name")
+        self.file_tree.heading("nodes", text="Nodes")
+        self.file_tree.heading("frames", text="Frames")
+
+        # Analysis options frame
+        analysis_frame = ttk.LabelFrame(self.main_frame, text="Analysis Options", padding="5")
+        analysis_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
+
+        # Single file analysis
+        single_frame = ttk.LabelFrame(analysis_frame, text="Single File Analysis", padding="5")
+        single_frame.grid(row=0, column=0, sticky="ew", padx=5)
+
+        ttk.Button(single_frame, text="View Summary",
+                   command=self.show_file_summary).grid(row=0, column=0, padx=5)
+        ttk.Button(single_frame, text="Plot Node Movement",
+                   command=self.plot_node_movement).grid(row=0, column=1, padx=5)
+        ttk.Button(single_frame, text="Find Stationary Nodes",
+                   command=self.find_stationary_nodes).grid(row=0, column=2, padx=5)
+
+        # Comparative analysis
+        comp_frame = ttk.LabelFrame(analysis_frame, text="Comparative Analysis", padding="5")
+        comp_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+
+        ttk.Button(comp_frame, text="Compare Node Displacement",
+                   command=self.compare_node_displacement).grid(row=0, column=0, padx=5)
+        ttk.Button(comp_frame, text="Compare Movement Patterns",
+                   command=self.compare_movement_patterns).grid(row=0, column=1, padx=5)
+        ttk.Button(comp_frame, text="Compare Stationary Nodes",
+                   command=self.compare_stationary_nodes).grid(row=0, column=2, padx=5)
+
+        # Configure grid weights
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+
+    def load_files(self):
+        """Open file dialog to load simulation files."""
+        from tkinter import filedialog, messagebox
+
+        # Open file dialog for selecting multiple files
+        files = filedialog.askopenfilenames(
+            title="Select Simulation Files",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+
+        # Load each selected file
+        for file_path in files:
+            try:
+                # Generate a simulation ID based on the filename
+                sim_id = self.analyzer.load_simulation(file_path)
+
+                # Get simulation summary
+                summary = self.analyzer.get_simulation_summary(sim_id)
+
+                # Store file information
+                self.loaded_files[file_path] = sim_id
+
+                # Add to treeview
+                self.file_tree.insert("", "end", values=(
+                    file_path.split("/")[-1],  # Just the filename
+                    summary['num_objects'],
+                    summary['num_frames']
+                ))
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load {file_path}:\n{str(e)}")
+
+    def clear_files(self):
+        """Clear all loaded files and reset the analyzer."""
+        self.loaded_files.clear()
+        self.analyzer = DataAnalysis()  # Reset the analyzer
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+
+    def get_selected_files(self):
+        """Get the simulation IDs for selected files in the treeview."""
+        selected_items = self.file_tree.selection()
+        if not selected_items:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select at least one file.")
+            return []
+
+        # Get file paths from selected items
+        selected_paths = [self.file_tree.item(item)['values'][0] for item in selected_items]
+
+        # Return corresponding simulation IDs
+        return [self.loaded_files[path] for path in selected_paths if path in self.loaded_files]
+
+    def show_file_summary(self):
+        """Display a detailed summary of the selected simulation file."""
+        sim_ids = self.get_selected_files()
+        if not sim_ids:
+            return
+
+        # Create summary window
+        import tkinter as tk
+        from tkinter import ttk
+
+        summary_window = tk.Toplevel(self.root)
+        summary_window.title("Simulation Summary")
+
+        # Get summary for first selected file
+        summary = self.analyzer.get_simulation_summary(sim_ids[0])
+
+        # Create text widget with summary information
+        text = tk.Text(summary_window, wrap=tk.WORD, width=50, height=20)
+        text.pack(padx=10, pady=10)
+
+        # Format and insert summary information
+        text.insert("end", f"Simulation Summary\n{'=' * 50}\n\n")
+        text.insert("end", f"Number of frames: {summary['num_frames']}\n")
+        text.insert("end", f"Simulation time: {summary['simulation_time']:.3f} seconds\n")
+        text.insert("end", f"Number of objects: {summary['num_objects']}\n")
+        text.insert("end", f"Number of stationary nodes: {summary['num_stationary_nodes']}\n\n")
+
+        text.insert("end", "Stationary Node Positions:\n")
+        for node_id, pos in summary['stationary_node_positions'].items():
+            text.insert("end", f"Node {node_id}: {pos}\n")
+
+        text.config(state=tk.DISABLED)  # Make text read-only
+
+    def plot_node_movement(self):
+        """Plot the movement of selected nodes for a single simulation."""
+        sim_ids = self.get_selected_files()
+        if not sim_ids or len(sim_ids) != 1:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select exactly one file.")
+            return
+
+        # Create node selection dialog
+        self.create_node_selection_dialog(sim_ids[0], self._plot_selected_nodes)
+
+    def _plot_selected_nodes(self, sim_id, selected_nodes):
+        """Helper function to plot movement for selected nodes."""
+        import matplotlib.pyplot as plt
+
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot movement path for each selected node
+        for node_id in selected_nodes:
+            x, y, z = self.analyzer.get_object_trajectory(sim_id, node_id)
+            ax.plot(x, y, z, label=f'Node {node_id}')
+
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('Node Movement Trajectories')
+        ax.legend()
+
+        plt.show()
+
+    def find_stationary_nodes(self):
+        """Find and display stationary nodes in the selected simulation."""
+        sim_ids = self.get_selected_files()
+        if not sim_ids or len(sim_ids) != 1:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select exactly one file.")
+            return
+
+        # Find stationary nodes
+        stationary_nodes = self.analyzer.find_stationary_nodes(sim_ids[0])
+
+        # Create results window
+        import tkinter as tk
+        from tkinter import ttk
+
+        results_window = tk.Toplevel(self.root)
+        results_window.title("Stationary Nodes")
+
+        # Display results
+        text = tk.Text(results_window, wrap=tk.WORD, width=50, height=20)
+        text.pack(padx=10, pady=10)
+
+        text.insert("end", f"Found {len(stationary_nodes)} stationary nodes:\n\n")
+        for node_id, pos in stationary_nodes.items():
+            text.insert("end", f"Node {node_id}:\n")
+            text.insert("end", f"  Position: {pos}\n")
+            text.insert("end", f"  Displacement: {np.linalg.norm(pos):.6f}\n\n")
+
+        text.config(state=tk.DISABLED)
+
+    def compare_node_displacement(self):
+        """Compare displacement patterns for selected nodes across simulations."""
+        sim_ids = self.get_selected_files()
+        if len(sim_ids) < 2:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select at least two files.")
+            return
+
+        # Create node selection dialog
+        self.create_node_selection_dialog(sim_ids[0],
+                                          lambda _, nodes: self.analyzer.plot_displacement_comparison(sim_ids,
+                                                                                                      nodes[0]))
+
+    def compare_movement_patterns(self):
+        """Compare movement patterns across selected simulations."""
+        sim_ids = self.get_selected_files()
+        if len(sim_ids) < 2:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select at least two files.")
+            return
+
+        # Plot comparative movement
+        self.analyzer.plot_comparative_movement(sim_ids)
+
+    def compare_stationary_nodes(self):
+        """Compare stationary nodes across selected simulations."""
+        sim_ids = self.get_selected_files()
+        if len(sim_ids) < 2:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select at least two files.")
+            return
+
+        # Get comparison results
+        comparison = self.analyzer.compare_stationary_nodes(sim_ids)
+
+        # Create results window
+        import tkinter as tk
+        from tkinter import ttk
+
+        results_window = tk.Toplevel(self.root)
+        results_window.title("Stationary Nodes Comparison")
+
+        # Display results
+        text = tk.Text(results_window, wrap=tk.WORD, width=60, height=30)
+        text.pack(padx=10, pady=10)
+
+        for sim_id, nodes in comparison.items():
+            text.insert("end", f"\nSimulation: {sim_id}\n{'=' * 50}\n")
+            if nodes:
+                text.insert("end", f"Found {len(nodes)} stationary nodes:\n")
+                for node_id, pos in nodes.items():
+                    text.insert("end", f"\nNode {node_id}:\n")
+                    text.insert("end", f"  Position: {pos}\n")
+                    text.insert("end", f"  Displacement: {np.linalg.norm(pos):.6f}\n")
+            else:
+                text.insert("end", "No stationary nodes found\n")
+
+        text.config(state=tk.DISABLED)
+
+    def create_node_selection_dialog(self, sim_id, callback):
+        """Create a dialog for selecting nodes to analyze."""
+        import tkinter as tk
+        from tkinter import ttk
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Select Nodes")
+
+        # Get number of nodes from simulation summary
+        num_nodes = self.analyzer.get_simulation_summary(sim_id)['num_objects']
+
+        # Create node selection listbox
+        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE, height=10)
+        listbox.pack(padx=10, pady=10)
+
+        # Add node numbers to listbox
+        for i in range(num_nodes):
+            listbox.insert(tk.END, f"Node {i}")
+
+        def on_ok():
+            selected = [int(listbox.get(idx).split()[1])
+                        for idx in listbox.curselection()]
+            if selected:
+                dialog.destroy()
+                callback(sim_id, selected)
+            else:
+                from tkinter import messagebox
+                messagebox.showwarning("Warning", "Please select at least one node.")
+
+        ttk.Button(dialog, text="OK", command=on_ok).pack(pady=5)
+        ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(pady=5)
+
+    def run(self):
+        """Start the analysis visualization system."""
+        self.root.mainloop()
