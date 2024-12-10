@@ -1,87 +1,177 @@
+import tkinter as tk
+from tkinter import ttk
 from Simulation import StringSimulation
 from Visualization import StringSimulationSetup, AnalysisVisualizer
 
 
-def main():
+class MainMenu:
     """
-    Main function offering choice between running new simulations or analyzing existing data.
-    The function provides two primary modes of operation:
-    1. Simulation Mode: Run new string physics simulations with configurable parameters
-    2. Analysis Mode: Analyze and compare previously saved simulation data
+    Main menu GUI for the String Physics Simulation and Analysis Tool.
+    Provides a graphical interface for choosing between simulation and analysis modes.
     """
-    print("\nString Physics Simulation and Analysis Tool")
-    print("==========================================")
-    print("\nChoose operation mode:")
-    print("1. Run new simulation")
-    print("2. Analyze existing simulation data")
-    print("3. Exit program")
 
-    while True:
-        try:
-            choice = input("\nEnter choice (1-3): ")
-            if choice in ['1', '2', '3']:
-                break
-            print("Invalid choice. Please enter 1, 2, or 3.")
-        except KeyboardInterrupt:
-            print("\nProgram terminated by user")
-            return
+    def __init__(self):
+        """Initialize the main menu window with default settings."""
+        # Create the main window
+        self.root = tk.Tk()
+        self.root.title("String Physics Simulation and Analysis Tool")
 
-    if choice == '1':
-        # Simulation mode
+        # Calculate window size (30% of screen)
+        window_width = int(self.root.winfo_screenwidth() * 0.27)
+        window_height = int(self.root.winfo_screenheight() * 0.6)
+
+        # Calculate position to center the window
+        x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
+
+        # Set window size and position
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        # Make window non-resizable for consistent layout
+        self.root.resizable(False, False)
+
+        # Configure the grid
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        # Setup the GUI elements
+        self.setup_gui()
+
+        # Track if we're returning to menu from simulation
+        self.returning_from_simulation = False
+
+    def setup_gui(self):
+        """Set up the main GUI elements."""
+        # Create main frame with padding
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.grid(row=0, column=0, sticky="nsew")
+
+        # Title label with large font
+        title_label = ttk.Label(
+            main_frame,
+            text="String Physics\nSimulation and Analysis Tool",
+            font=("Arial", 16, "bold"),
+            justify="center"
+        )
+        title_label.grid(row=0, column=0, pady=(0, 20))
+
+        # Description text
+        description = (
+            "This tool allows you to simulate and analyze\n"
+            "the physics of vibrating strings using various\n"
+            "numerical methods and parameters."
+        )
+        desc_label = ttk.Label(
+            main_frame,
+            text=description,
+            justify="center",
+            font=("Arial", 10)
+        )
+        desc_label.grid(row=1, column=0, pady=(0, 30))
+
+        # Button frame for consistent button sizing
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=2, column=0, pady=(0, 20))
+
+        # Style configuration for buttons
+        button_style = ttk.Style()
+        button_style.configure(
+            "Action.TButton",
+            font=("Arial", 11),
+            padding=10
+        )
+
+        # Create buttons with consistent width
+        button_width = 25
+
+        # New Simulation button
+        sim_button = ttk.Button(
+            button_frame,
+            text="Run New Simulation",
+            command=self.start_simulation,
+            style="Action.TButton",
+            width=button_width
+        )
+        sim_button.grid(row=0, column=0, pady=5)
+
+        # Analysis button
+        analysis_button = ttk.Button(
+            button_frame,
+            text="Analyze Simulation Data",
+            command=self.start_analysis,
+            style="Action.TButton",
+            width=button_width
+        )
+        analysis_button.grid(row=1, column=0, pady=5)
+
+        # Exit button
+        exit_button = ttk.Button(
+            button_frame,
+            text="Exit Program",
+            command=self.exit_program,
+            style="Action.TButton",
+            width=button_width
+        )
+        exit_button.grid(row=2, column=0, pady=5)
+
+        # Version info at bottom
+        version_label = ttk.Label(
+            main_frame,
+            text="Version 1.0",
+            font=("Arial", 8),
+            foreground="gray"
+        )
+        version_label.grid(row=3, column=0, pady=(10, 0))
+
+    def start_simulation(self):
+        """Launch the simulation setup and handling loop."""
+        self.root.withdraw()  # Hide main menu
+
         while True:
-            # Create and run the setup GUI to get simulation parameters
+            # Create and run the setup GUI
             setup = StringSimulationSetup()
             params = setup.get_parameters()
 
-            # Check if the user closed the window without starting
+            # Check if setup was cancelled
             if params is None:
-                print("Simulation cancelled by user")
                 break
 
-            print("\nStarting simulation with parameters:")
-            print(f"Number of segments: {params.num_segments}")
-            print(f"Spring constant: {params.spring_constant}")
-            print(f"Mass per point: {params.mass}")
-            print(f"Time step: {params.dt}")
-            print(f"Integration method: {params.integration_method}")
-            print("\nControls:")
-            print("- Left click and drag: Rotate view")
-            print("- Scroll wheel: Zoom in/out")
-            print("- Space bar: Apply vertical force to middle mass")
-            print("- 'p': Pause/Resume simulation")
-            print("- 'Return to Setup': Close simulation and restart setup")
-
-            # Create and run the simulation with the selected parameters
+            # Create and run simulation
             simulation = StringSimulation(params)
             should_restart = simulation.run()
 
-            if not should_restart:  # If we're not restarting, break the loop
+            if not should_restart:
                 break
 
-            # After simulation ends, offer to switch to analysis mode
-            print("\nSimulation completed. Would you like to:")
-            print("1. Run another simulation")
-            print("2. Switch to analysis mode")
-            print("3. Exit program")
+        self.root.deiconify()  # Show main menu again
 
-            post_sim_choice = input("\nEnter choice (1-3): ")
-            if post_sim_choice == '2':
-                # Launch analysis mode
-                analyzer = AnalysisVisualizer()
-                analyzer.run()
-                break
-            elif post_sim_choice == '3':
-                break
+    def start_analysis(self):
+        """Launch the analysis visualization system."""
+        self.root.withdraw()  # Hide main menu
 
-    elif choice == '2':
-        # Analysis mode for existing data
-        print("\nLaunching Analysis Tool...")
-        print("You can load and analyze multiple simulation files through the interface.")
+        # Create and run analyzer
         analyzer = AnalysisVisualizer()
         analyzer.run()
 
-    else:  # choice == '3'
-        print("\nExiting program. Goodbye!")
+        self.root.deiconify()  # Show main menu again
+
+    def exit_program(self):
+        """Clean up and exit the program."""
+        self.root.quit()
+        self.root.destroy()
+
+    def run(self):
+        """Start the main menu."""
+        self.root.mainloop()
+
+
+def main():
+    """
+    Main entry point for the String Physics Simulation and Analysis Tool.
+    Creates and runs the main menu GUI.
+    """
+    menu = MainMenu()
+    menu.run()
 
 
 

@@ -1,5 +1,5 @@
 """Enhanced visualization system with integrated force handling."""
-
+import os
 import time
 import tkinter as tk
 from dataclasses import dataclass
@@ -1104,10 +1104,7 @@ class AnalysisVisualizer:
         import tkinter as tk
         from tkinter import ttk, filedialog, messagebox
 
-        # Create the data analyzer instance
         self.analyzer = DataAnalysis()
-
-        # Initialize the main window
         self.root = tk.Tk()
         self.root.title("String Simulation Analysis")
 
@@ -1118,10 +1115,10 @@ class AnalysisVisualizer:
         y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
-        # Track loaded simulations and their metadata
+        # Track loaded files with both paths and IDs
         self.loaded_files = {}  # Maps file paths to simulation IDs
+        self.file_items = {}    # Maps treeview items to file paths
 
-        # Setup the GUI
         self.setup_gui()
 
     def setup_gui(self):
@@ -1185,13 +1182,11 @@ class AnalysisVisualizer:
         """Open file dialog to load simulation files."""
         from tkinter import filedialog, messagebox
 
-        # Open file dialog for selecting multiple files
         files = filedialog.askopenfilenames(
             title="Select Simulation Files",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
 
-        # Load each selected file
         for file_path in files:
             try:
                 # Generate a simulation ID based on the filename
@@ -1203,22 +1198,16 @@ class AnalysisVisualizer:
                 # Store file information
                 self.loaded_files[file_path] = sim_id
 
-                # Add to treeview
-                self.file_tree.insert("", "end", values=(
-                    file_path.split("/")[-1],  # Just the filename
+                # Add to treeview and store the item ID
+                item = self.file_tree.insert("", "end", values=(
+                    os.path.basename(file_path),  # Just the filename
                     summary['num_objects'],
                     summary['num_frames']
                 ))
+                self.file_items[item] = file_path
 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load {file_path}:\n{str(e)}")
-
-    def clear_files(self):
-        """Clear all loaded files and reset the analyzer."""
-        self.loaded_files.clear()
-        self.analyzer = DataAnalysis()  # Reset the analyzer
-        for item in self.file_tree.get_children():
-            self.file_tree.delete(item)
 
     def get_selected_files(self):
         """Get the simulation IDs for selected files in the treeview."""
@@ -1228,11 +1217,17 @@ class AnalysisVisualizer:
             messagebox.showwarning("Warning", "Please select at least one file.")
             return []
 
-        # Get file paths from selected items
-        selected_paths = [self.file_tree.item(item)['values'][0] for item in selected_items]
+        # Get simulation IDs using the stored file paths
+        return [self.loaded_files[self.file_items[item]] for item in selected_items]
 
-        # Return corresponding simulation IDs
-        return [self.loaded_files[path] for path in selected_paths if path in self.loaded_files]
+    def clear_files(self):
+        """Clear all loaded files and reset the analyzer."""
+        self.loaded_files.clear()
+        self.file_items.clear()
+        self.analyzer = DataAnalysis()
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+
 
     def show_file_summary(self):
         """Display a detailed summary of the selected simulation file."""
