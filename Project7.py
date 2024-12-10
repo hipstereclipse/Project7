@@ -129,11 +129,12 @@ class MainMenu:
 
         while True:
             # Create and run the setup GUI
-            setup = StringSimulationSetup()
+            setup = StringSimulationSetup(self.root)  # Pass main menu root
             params = setup.get_parameters()
 
-            # Check if setup was cancelled
+            # Check if setup was cancelled or failed
             if params is None:
+                print("Simulation setup was cancelled or failed")
                 break
 
             # Create and run simulation
@@ -150,7 +151,7 @@ class MainMenu:
         self.root.withdraw()  # Hide main menu
 
         # Create and run analyzer
-        analyzer = AnalysisVisualizer()
+        analyzer = AnalysisVisualizer(self.root)  # Pass main menu root
         analyzer.run()
 
         self.root.deiconify()  # Show main menu again

@@ -169,12 +169,25 @@ class ForceHandler:
 class StringSimulationSetup:
     """Setup GUI for string simulation configuration."""
 
-    def __init__(self):
-        self.root = tk.Tk()
+    def __init__(self, main_root):
+        """
+        Initialize the setup GUI with proper variable handling.
+
+        Args:
+            main_root: Reference to the main menu window
+        """
+        self.main_root = main_root
+        self.root = tk.Toplevel(main_root)
         self.root.title("String Simulation Setup")
 
+        # Create SimulationParameters instance first
+        self.default_params = SimulationParameters()
+
+        # Initialize variables
+        self.init_variables()
+
         # Set minimum window size
-        self.root.minsize(600, 400)
+        self.root.minsize(600, 500)
 
         # Default to 40% of screen width, 60% of screen height
         screen_width = self.root.winfo_screenwidth()
@@ -184,16 +197,13 @@ class StringSimulationSetup:
 
         # Center the window
         x = (screen_width // 2) - (window_width // 2)
-        y = (screen_height // 2) - (window_height // 2)
+        y = (screen_height // 4) - (window_height // 4)
 
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
         # Configure grid weights for responsive layout
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
-
-        # Initialize variables
-        self.init_variables()
 
         # Create responsive styles
         self.create_responsive_styles()
@@ -203,6 +213,35 @@ class StringSimulationSetup:
 
         # Bind resize event
         self.root.bind('<Configure>', self.on_window_resize)
+
+    def init_variables(self):
+        """Initialize GUI variables using defaults from SimulationParameters."""
+        # Create tkinter variables and set their values from default_params
+        self.num_segments_var = tk.IntVar(self.root)
+        self.num_segments_var.set(self.default_params.num_segments)
+
+        self.spring_constant_var = tk.DoubleVar(self.root)
+        self.spring_constant_var.set(self.default_params.spring_constant)
+
+        self.mass_var = tk.DoubleVar(self.root)
+        self.mass_var.set(self.default_params.mass)
+
+        self.dt_var = tk.DoubleVar(self.root)
+        self.dt_var.set(self.default_params.dt)
+
+        # Extract force magnitude from the applied_force vector
+        force_magnitude = float(np.linalg.norm(self.default_params.applied_force))
+        self.force_magnitude_var = tk.DoubleVar(self.root)
+        self.force_magnitude_var.set(force_magnitude)
+
+        self.integration_var = tk.StringVar(self.root)
+        self.integration_var.set(self.default_params.integration_method)
+
+        self.dark_mode_var = tk.BooleanVar(self.root)
+        self.dark_mode_var.set(self.default_params.dark_mode)
+
+        # Initialize simulation_params as None - will be set when starting simulation
+        self.simulation_params = None
 
     def create_responsive_styles(self):
         """Create TTK styles that adapt to window size."""
@@ -303,21 +342,21 @@ class StringSimulationSetup:
 
         # Number of segments
         ttk.Label(props_frame, text="Number of segments:").grid(row=0, column=0, padx=5, pady=5)
-        segments_entry = ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10)
-        segments_entry.insert(0, str(self.num_segments_var.get()))  # Set default value
-        segments_entry.grid(row=0, column=1, padx=5, pady=5)
+        ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10).grid(
+            row=0, column=1, padx=5, pady=5
+        )
 
         # Spring constant
         ttk.Label(props_frame, text="Spring constant (N/m):").grid(row=1, column=0, padx=5, pady=5)
-        spring_entry = ttk.Entry(props_frame, textvariable=self.spring_constant_var, width=10)
-        spring_entry.insert(0, str(self.spring_constant_var.get()))  # Set default value
-        spring_entry.grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(props_frame, textvariable=self.spring_constant_var, width=10).grid(
+            row=1, column=1, padx=5, pady=5
+        )
 
         # Mass per point
         ttk.Label(props_frame, text="Mass per point (kg):").grid(row=2, column=0, padx=5, pady=5)
-        mass_entry = ttk.Entry(props_frame, textvariable=self.mass_var, width=10)
-        mass_entry.insert(0, str(self.mass_var.get()))  # Set default value
-        mass_entry.grid(row=2, column=1, padx=5, pady=5)
+        ttk.Entry(props_frame, textvariable=self.mass_var, width=10).grid(
+            row=2, column=1, padx=5, pady=5
+        )
 
         # Display settings
         display_frame = ttk.LabelFrame(parent, text="Display Settings", padding="10")
@@ -338,7 +377,6 @@ class StringSimulationSetup:
 
         ttk.Label(force_frame, text="Force magnitude (N):").grid(row=0, column=0, padx=5, pady=5)
         force_entry = ttk.Entry(force_frame, textvariable=self.force_magnitude_var, width=10)
-        force_entry.insert(0, str(self.force_magnitude_var.get()))  # Set default value
         force_entry.grid(row=0, column=1, padx=5, pady=5)
 
         # Integration method
@@ -512,6 +550,7 @@ class SimulationVisualizer:
         self.frame_times = []  # Store recent frame times for averaging
         self.max_frame_times = 30  # Number of frames to average
         self.animation_frame_count = 0
+        self.main_root = None  # Will store reference to main menu window
 
     def setup_visualization(self):
         """Set up visualization window and controls."""
@@ -651,6 +690,8 @@ class SimulationVisualizer:
         """Handle the return to setup button click."""
         self.should_restart = True  # Set the restart flag
         plt.close(self.fig)  # Close the current simulation window
+        if self.main_root:
+            self.main_root.deiconify()  # Show main menu
 
     def setup_plots(self):
         """Initialize plot elements for visualization."""
@@ -1161,14 +1202,13 @@ class SimulationVisualizer:
         plt.show()
         return self.should_restart
 
-
 class AnalysisVisualizer:
     """
     Interactive visualization system for analyzing string simulation data.
     Provides flexible analysis capabilities for any number of simulation files.
     """
 
-    def __init__(self):
+    def __init__(self, main_root):
         """Initialize the analysis visualization system with enhanced flexibility."""
         from data_handling import DataAnalysis
         import tkinter as tk
@@ -1179,12 +1219,13 @@ class AnalysisVisualizer:
         self.loaded_files = {}  # Maps file paths to their simulation data
 
         # Set up main window
-        self.root = tk.Tk()
+        self.main_root = main_root  # Store reference to main menu window
+        self.root = tk.Toplevel(main_root)  # Create as Toplevel instead of Tk
         self.root.title("String Simulation Analysis")
 
         # Calculate and set window dimensions
         window_width = int(self.root.winfo_screenwidth() * 0.55)
-        window_height = int(self.root.winfo_screenheight() * 0.35)
+        window_height = int(self.root.winfo_screenheight() * 0.40)
         x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
         y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
@@ -1194,6 +1235,9 @@ class AnalysisVisualizer:
 
         # Set up the GUI elements
         self.setup_gui()
+
+        # Add protocol for window closing
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_gui(self):
         """Set up the main GUI elements with streamlined layout and improved organization."""
@@ -1208,14 +1252,12 @@ class AnalysisVisualizer:
         # File management buttons with improved layout
         button_frame = ttk.Frame(file_frame)
         button_frame.grid(row=0, column=0, sticky="ew", padx=5)
-        button_frame.columnconfigure(1, weight=1)  # This makes the middle space expand
+        button_frame.columnconfigure(1, weight=1)
 
-        # Left-aligned load button
         ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(
             row=0, column=0, padx=5, sticky="w"
         )
 
-        # Right-aligned delete and clear buttons
         delete_frame = ttk.Frame(button_frame)
         delete_frame.grid(row=0, column=2, sticky="e")
 
@@ -1226,11 +1268,11 @@ class AnalysisVisualizer:
             side="left", padx=5
         )
 
-        # Create treeview for file list with automatic selection
+        # Create treeview for file list
         self.file_tree = ttk.Treeview(file_frame, show="headings", height=3, selectmode="extended")
         self.file_tree.grid(row=1, column=0, sticky="ew", pady=5)
 
-        # Configure treeview columns with improved visibility
+        # Configure treeview columns
         self.file_tree["columns"] = ("filename", "nodes", "frames", "time", "color")
         columns = [
             ("filename", "Filename", 200, "w"),
@@ -1244,15 +1286,14 @@ class AnalysisVisualizer:
             self.file_tree.heading(col, text=heading)
             self.file_tree.column(col, width=width, anchor=anchor)
 
-        # Enable color cycling on double-click
         self.file_tree.bind("<Double-1>", self.cycle_color)
 
-        # Analysis options frame with simplified layout
+        # Analysis options frame
         analysis_frame = ttk.LabelFrame(self.main_frame, text="Analysis Options", padding="5")
         analysis_frame.grid(row=1, column=0, sticky="ew", pady=5)
 
-        # Define analysis buttons with their commands
-        analysis_buttons = [
+        # Define analysis buttons in two rows
+        row1_buttons = [
             ("View Summary", self.show_summary),
             ("Find Stationary Nodes", self.compare_stationary),
             ("Node Displacement", self.compare_displacement),
@@ -1260,16 +1301,24 @@ class AnalysisVisualizer:
             ("Movement Patterns", self.compare_movement)
         ]
 
-        # Calculate button width based on frame width
-        analysis_frame.update_idletasks()  # Ensure frame dimensions are updated
-        button_width = analysis_frame.winfo_width() // (len(analysis_buttons) + 1)
+        row2_buttons = [
+            ("Harmonic Analysis", self.analyze_harmonics)
+        ]
 
-        # Create analysis buttons with consistent spacing and size
-        for i, (text, command) in enumerate(analysis_buttons):
+        # Create buttons for the first row
+        for i, (text, command) in enumerate(row1_buttons):
             ttk.Button(analysis_frame, text=text, command=command).grid(
                 row=0, column=i, padx=5, pady=5, sticky="ew"
             )
-            analysis_frame.columnconfigure(i, weight=1)  # Make columns expand evenly
+            analysis_frame.columnconfigure(i, weight=1)
+
+        # Create buttons for the second row
+        # Calculate the starting column for centering the button
+        start_col = (len(row1_buttons) - len(row2_buttons)) // 2
+        for i, (text, command) in enumerate(row2_buttons):
+            ttk.Button(analysis_frame, text=text, command=command).grid(
+                row=1, column=start_col + i, padx=5, pady=5, sticky="ew"
+            )
 
     def load_files(self):
         """Load and automatically select simulation data files."""
@@ -1435,6 +1484,159 @@ class AnalysisVisualizer:
 
         # Create node selection dialog
         self.create_node_selection_dialog(files[0])
+
+    def analyze_harmonics(self):
+        """
+        Compare simulation data to harmonic patterns and visualize the matches.
+        This analysis helps identify which harmonic modes are most present in the simulation.
+        """
+        files = self.get_selected_files()
+        if not files:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        # Hide the main window while showing the analysis
+        self.root.withdraw()
+
+        try:
+            # Generate the harmonic analysis
+            self.plot_harmonic_correlation(files)
+        finally:
+            # Ensure the main window is shown again
+            self.root.deiconify()
+
+    def plot_harmonic_correlation(self, files):
+        """
+        Calculate and plot the correlation between simulation data and harmonic patterns.
+        Uses numpy for calculations instead of scipy.
+
+        Args:
+            files: List of simulation file paths to analyze
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        def generate_harmonic(x, n):
+            """
+            Generate nth harmonic pattern.
+
+            Args:
+                x: Position values along string (0 to 1)
+                n: Harmonic number (1 for fundamental, 2 for first overtone, etc.)
+
+            Returns:
+                Harmonic displacement pattern
+            """
+            return np.sin(n * np.pi * x)
+
+        def compute_correlation(x, y):
+            """
+            Compute the Pearson correlation coefficient between two arrays.
+
+            Args:
+                x, y: Arrays to compare
+
+            Returns:
+                Correlation coefficient between -1 and 1
+            """
+            # Remove mean
+            x_centered = x - np.mean(x)
+            y_centered = y - np.mean(y)
+
+            # Compute correlation
+            numerator = np.sum(x_centered * y_centered)
+            denominator = np.sqrt(np.sum(x_centered ** 2) * np.sum(y_centered ** 2))
+
+            if denominator == 0:
+                return 0
+
+            return numerator / denominator
+
+        # Create figure for the analysis
+        fig, axes = plt.subplots(len(files), 1, figsize=(12, 4 * len(files)))
+        if len(files) == 1:
+            axes = [axes]  # Make axes iterable if only one file
+
+        # Number of harmonics to analyze
+        num_harmonics = 10
+
+        for file_idx, file_path in enumerate(files):
+            # Get the data for this simulation
+            data = self.loaded_files[file_path]
+            filename = os.path.basename(file_path)
+
+            # Get number of nodes
+            num_nodes = self.analyzer.get_simulation_summary(data)['num_objects']
+
+            # Create normalized position array (0 to 1)
+            x_positions = np.linspace(0, 1, num_nodes)
+
+            # Calculate average displacement pattern
+            avg_displacement = np.zeros(num_nodes)
+            max_displacement = 0
+
+            # Calculate time-averaged displacement pattern
+            for node in range(num_nodes):
+                _, _, z = self.analyzer.get_object_trajectory(data, node)
+                # Remove initial position to get pure displacement
+                z = z - z[0]
+                # Use RMS of displacement to capture motion amplitude
+                avg_displacement[node] = np.sqrt(np.mean(z ** 2))
+                max_displacement = max(max_displacement, abs(avg_displacement[node]))
+
+            # Normalize the displacement pattern
+            if max_displacement > 0:
+                avg_displacement /= max_displacement
+
+            # Calculate correlation with each harmonic
+            correlations = []
+            for n in range(1, num_harmonics + 1):
+                harmonic_pattern = generate_harmonic(x_positions, n)
+                # Take absolute value of correlation since phase doesn't matter
+                correlation = abs(compute_correlation(avg_displacement, harmonic_pattern))
+                correlations.append(correlation * 100)  # Convert to percentage
+
+            # Create the bar plot for this file
+            ax = axes[file_idx]
+            bars = ax.bar(range(1, num_harmonics + 1), correlations)
+
+            # Configure the plot
+            ax.set_xlabel('Harmonic Number')
+            ax.set_ylabel('Correlation (%)')
+            ax.set_title(f'Harmonic Analysis - {filename}')
+            ax.grid(True, alpha=0.3)
+            ax.set_xticks(range(1, num_harmonics + 1))
+            ax.set_ylim(0, 100)
+
+            # Add percentage labels on top of each bar
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width() / 2., height,
+                        f'{height:.1f}%',
+                        ha='center', va='bottom')
+
+            # Add explanatory text for strongest harmonics
+            sorted_harmonics = np.argsort(correlations)[::-1]  # Sort in descending order
+            top_3_text = "Dominant harmonics:\n"
+            for i in range(min(3, len(sorted_harmonics))):
+                harmonic_num = sorted_harmonics[i] + 1
+                correlation = correlations[sorted_harmonics[i]]
+                top_3_text += f"{harmonic_num}th: {correlation:.1f}%\n"
+
+            ax.text(0.98, 0.98, top_3_text,
+                    transform=ax.transAxes,
+                    verticalalignment='top',
+                    horizontalalignment='right',
+                    bbox=dict(facecolor='white', alpha=0.8))
+
+        # Adjust layout to prevent overlap
+        plt.tight_layout()
+
+        # Show the plot
+        plt.show()
+
+        return correlations
 
     def create_node_selection_dialog(self, file_path):
         """
@@ -1692,3 +1894,9 @@ class AnalysisVisualizer:
     def run(self):
         """Start the analysis visualization system."""
         self.root.mainloop()
+
+    def on_closing(self):
+        """Handle window closing event."""
+        self.root.destroy()
+        if self.main_root:
+            self.main_root.deiconify()  # Show main menu
