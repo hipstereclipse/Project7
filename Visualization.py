@@ -1148,9 +1148,9 @@ class SimulationVisualizer:
 
     def update_camera_info(self):
         text = (
-            f"Camera Azim: {self.plotter.camera['azimuth']:.1f}\n"
-            f"Camera Elev: {self.plotter.camera['elevation']:.1f}\n"
-            f"Camera Dist: {self.plotter.camera['distance']:.1f}"
+            f"Camera Azim: {self.camera['azimuth']:.1f}\n"
+            f"Camera Elev: {self.camera['elevation']:.1f}\n"
+            f"Camera Dist: {self.camera['distance']:.1f}"
         )
         self.plotter.update_text('camera_info', text)
 
@@ -1326,8 +1326,8 @@ class SimulationVisualizer:
             next_idx = 0
 
         name, azim, elev = views[next_idx]
-        self.plotter.camera['azimuth'] = azim
-        self.plotter.camera['elevation'] = elev
+        self.camera['azimuth'] = azim
+        self.camera['elevation'] = elev
         self.view_button.label.set_text(f'View: {name}')
 
         self.ax.view_init(elev=elev, azim=azim)
@@ -1346,7 +1346,7 @@ class SimulationVisualizer:
         current_idx = levels.index(current) if current in levels else 0
         next_level = levels[(current_idx + 1) % len(levels)]
 
-        self.plotter.camera['distance'] = zoom_levels[next_level]
+        self.camera['distance'] = zoom_levels[next_level]
         self.zoom_button.label.set_text(f'Zoom: {next_level}')
         self.update_camera()
         self.fig.canvas.draw_idle()
@@ -1360,10 +1360,10 @@ class SimulationVisualizer:
 
     def update_camera(self):
         self.ax.view_init(
-            elev=self.plotter.camera['elevation'],
-            azim=self.plotter.camera['azimuth']
+            elev=self.camera['elevation'],
+            azim=self.camera['azimuth']
         )
-        dist = self.plotter.camera['distance']
+        dist = self.camera['distance']
         self.ax.set_xlim(-dist, dist)
         self.ax.set_ylim(-dist, dist)
         self.ax.set_zlim(-dist, dist)
