@@ -434,7 +434,7 @@ class ForceHandler:
         self.active = False
         self.continuous = False
         self.duration = 0.01
-        self.duration_remaining = 0.01
+        self.duration_remaining = 0.01  # Initialize to match duration
         self.amplitude = 10.0
         self.selected_object = len(objects) // 2
 
@@ -454,6 +454,7 @@ class ForceHandler:
         self.selected_direction = 'Up/Down (Z)'
 
     def check_duration(self, iterations_per_frame):
+        """Enhanced duration checking with proper time tracking."""
         if not self.continuous and self.active:
             time_elapsed = self.physics.dt * iterations_per_frame
             self.duration_remaining = max(0.0, self.duration_remaining - time_elapsed)
@@ -464,6 +465,7 @@ class ForceHandler:
         return False
 
     def toggle(self):
+        """Enhanced toggle with proper duration management."""
         if self.active:
             self.deactivate()
             return ('Apply Force', 'darkgray')
@@ -472,6 +474,7 @@ class ForceHandler:
             return ('Force Locked', 'red')
         else:
             self.active = True
+            # Reset remaining duration to full duration when activating
             self.duration_remaining = self.duration
             self.apply(self.duration)
             return ('Force Active', 'lightgreen')
@@ -490,11 +493,12 @@ class ForceHandler:
                 self.physics.apply_force(i, direction * magnitude, duration)
 
     def deactivate(self):
+        """Enhanced deactivation with duration reset."""
         self.active = False
-        self.duration_remaining = 0.0
+        # Reset remaining duration to match slider value
+        self.duration_remaining = self.duration
         for obj_id in range(len(self.objects)):
             self.physics.clear_force(obj_id)
-
 
 class StringSimulationSetup:
     def __init__(self, main_root):
@@ -1105,19 +1109,33 @@ class SimulationVisualizer:
                 )
 
     def update_info(self):
-        time_info = self.physics.data_recorder.get_time_info()
+        """
+        Updates the information display with current simulation status.
+        Uses the physics engine's actual time instead of the data recorder.
+        """
+        # Get the current simulation time directly from the physics engine
+        # Only show time progression when simulation is actually running
+        current_time = self.physics.time if self.simulation_started else 0.0
         dt_per_frame = self.physics.dt * self.iteration_count
         state = 'PAUSED' if self.paused else 'RUNNING'
 
+        # Format force duration information
+        if self.force_handler.active:
+            duration_text = f"{self.force_handler.duration_remaining:.2f}s remaining"
+        else:
+            duration_text = f"Duration set to {self.force_handler.duration:.2f}s"
+
+        # Create comprehensive status display
         info_text = (
             f"{state}\n"
             f"Frame: {self.animation_frame_count}\n"
             f"FPS: {min(self.fps, 60.0):.1f}\n"
-            f"Time: {time_info['simulation_time']:.3f}s\n"
+            f"Time: {current_time:.3f}s\n"  
             f"Integration: {self.integration_method.title()}\n"
             f"dt/step: {self.physics.dt:.6f}s\n"
             f"dt/frame: {dt_per_frame:.6f}s\n"
-            f"Steps/Frame: {self.iteration_count}"
+            f"Steps/Frame: {self.iteration_count}\n"
+            f"Force Duration: {duration_text}"
         )
         self.info_text.set_text(info_text)
         self.update_force_info()
@@ -1194,6 +1212,10 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def reset_simulation(self, event):
+        """
+        Enhanced reset that properly handles time reset.
+        """
+        # Reset animation counters
         self.animation_frame_count = 0
         self.fps = 0
         self.frame_times.clear()
@@ -1201,18 +1223,27 @@ class SimulationVisualizer:
         self.simulation_started = False
         self.paused = True
 
+        # Update UI elements
         self.play_button.label.set_text('Start')
-        self.physics.time = self.initial_physics_time
+
+        # Reset physics engine state
+        self.physics.time = self.initial_physics_time  # Reset to initial time
         self.physics.simulation_started = False
         self.force_handler.deactivate()
 
+        # Reset object positions and velocities
         for i, obj in enumerate(self.objects):
             obj.position = self.original_positions[i].copy()
             obj.velocity = self.original_velocities[i].copy()
             obj.acceleration = np.zeros(3)
 
+        # Reset force UI
         self.force_button.label.set_text('Apply Force')
+
+        # Clear recorded data
         self.physics.data_recorder.clear_history()
+
+        # Update display
         self.update_plots()
         self.update_info()
         self.fig.canvas.draw_idle()
@@ -1247,6 +1278,8 @@ class SimulationVisualizer:
         root.destroy()
 
     def toggle_force(self, event):
+        """Enhanced force toggle with proper duration management."""
+        # Start simulation if not already started
         if not self.simulation_started and not self.force_handler.active:
             self.simulation_started = True
             self.physics.start_simulation()
@@ -1262,11 +1295,15 @@ class SimulationVisualizer:
                     cache_frame_data=False
                 )
 
+        # Toggle force state with updated duration handling
         result = self.force_handler.toggle()
         if result:
             label, color = result
             self.force_button.label.set_text(label)
             self.force_button.color = color
+            # Reset remaining duration to slider value when force is deactivated
+            if not self.force_handler.active:
+                self.force_handler.duration_remaining = self.force_handler.duration
             self.fig.canvas.draw_idle()
 
     def toggle_continuous_force(self, event):
@@ -1299,8 +1336,11 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def set_force_duration(self, val):
+        """Updates both the base duration and remaining duration when slider changes."""
         self.force_handler.duration = float(val)
-        self.force_handler.duration_remaining = float(val)
+        # Only update remaining duration if force is not currently active
+        if not self.force_handler.active:
+            self.force_handler.duration_remaining = float(val)
         self.update_info()
         self.fig.canvas.draw_idle()
 

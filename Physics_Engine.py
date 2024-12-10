@@ -57,6 +57,46 @@ class PhysicsEngine:
                 self.continuous_forces[obj_id] = False
                 self.force_end_times[obj_id] = self.time + duration  # Set end time
 
+    def get_forces_on_object(self, obj_index: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Calculate the forces acting on a specific object.
+
+        Args:
+            obj_index: Index of the object to analyze
+
+        Returns:
+            Tuple of (external_force, spring_forces, total_force) as numpy arrays
+        """
+        obj = self.objects[obj_index]
+
+        # Get external forces (if any)
+        external_force = np.zeros(3)
+        if (self.time <= self.force_end_times[obj.obj_id] or
+                self.continuous_forces[obj.obj_id]):
+            external_force = self.external_forces[obj.obj_id]
+
+        # Calculate spring forces from neighbors
+        spring_forces = np.zeros(3)
+
+        # Force from left neighbor
+        if obj_index > 0:
+            spring_forces += self.compute_spring_force(
+                obj.position,
+                self.objects[obj_index - 1].position
+            )
+
+        # Force from right neighbor
+        if obj_index < len(self.objects) - 1:
+            spring_forces += self.compute_spring_force(
+                obj.position,
+                self.objects[obj_index + 1].position
+            )
+
+        # Total force is sum of external and spring forces
+        total_force = external_force + spring_forces
+
+        return external_force, spring_forces, total_force
+
     def check_and_clear_expired_forces(self):
         """
         Check for expired forces and clear them if their duration has elapsed.
