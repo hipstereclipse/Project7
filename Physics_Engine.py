@@ -24,6 +24,8 @@ class PhysicsEngine:
         self.equilibrium_length = equilibrium_length  # Natural spring length
         self.time = time  # Current simulation time
         self.dt = dt  # Timestep for simulation
+        self.simulation_started = False  # New flag to track if simulation has started
+        self.start_time = None  # Will store the actual start time when simulation begins
 
         # Track external forces applied to objects
         self.external_forces = {obj.obj_id: np.zeros(3) for obj in objects}  # Map of object ID to force vector
@@ -124,48 +126,51 @@ class PhysicsEngine:
 
         return total_force / obj.mass  # Acceleration = Force / Mass
 
+    def start_simulation(self):
+        """Start the simulation timer if not already started."""
+        if not self.simulation_started:
+            self.simulation_started = True
+            self.start_time = self.time
+            print("Simulation started at time:", self.time)
+
     def step(self, integration_method: str = 'leapfrog') -> None:
         """
-        Advance the simulation by one timestep using the specified integration method.
-
-        Args:
-            integration_method: Name of the integration method (e.g., 'leapfrog', 'rk2').
+        Advance the simulation by one timestep if it has been started.
         """
-        # Remove any forces whose duration has expired
-        self.check_and_clear_expired_forces()
+        # Only process the step if simulation has started
+        if self.simulation_started:
+            # Remove any forces whose duration has expired
+            self.check_and_clear_expired_forces()
 
-        # Gather current simulation data
-        positions = np.array([obj.position for obj in self.objects])  # Current positions
-        velocities = np.array([obj.velocity for obj in self.objects])  # Current velocities
-        fixed_masses = [obj.pinned for obj in self.objects]  # Pinned status of masses
-        accelerations = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])  # Accelerations
+            # Gather current simulation data
+            positions = np.array([obj.position for obj in self.objects])
+            velocities = np.array([obj.velocity for obj in self.objects])
+            fixed_masses = [obj.pinned for obj in self.objects]
+            accelerations = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])
 
-        # Prepare for integration
-        if integration_method in ['leapfrog', 'euler_croner', 'rk2']:
-            # A function to recompute accelerations during integration
-            def get_accelerations(pos):
-                original_positions = positions.copy()
-                for i, obj in enumerate(self.objects):
-                    obj.position = pos[i]
-                acceleration = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])
-                for i, obj in enumerate(self.objects):
-                    obj.position = original_positions[i]
-                return acceleration
+            # Perform integration step based on method
+            if integration_method in ['leapfrog', 'euler_croner', 'rk2']:
+                def get_accelerations(pos):
+                    original_positions = positions.copy()
+                    for i, obj in enumerate(self.objects):
+                        obj.position = pos[i]
+                    acceleration = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])
+                    for i, obj in enumerate(self.objects):
+                        obj.position = original_positions[i]
+                    return acceleration
 
-            # Perform integration with custom acceleration function
-            new_positions, new_velocities = INTEGRATORS[integration_method](
-                positions, velocities, accelerations, fixed_masses, self.dt, get_accelerations)
-        else:
-            # Perform integration without custom acceleration function
-            new_positions, new_velocities = INTEGRATORS[integration_method](
-                positions, velocities, accelerations, fixed_masses, self.dt)
+                new_positions, new_velocities = INTEGRATORS[integration_method](
+                    positions, velocities, accelerations, fixed_masses, self.dt, get_accelerations)
+            else:
+                new_positions, new_velocities = INTEGRATORS[integration_method](
+                    positions, velocities, accelerations, fixed_masses, self.dt)
 
-        # Update the state of each object
-        for i, obj in enumerate(self.objects):
-            if not obj.pinned:
-                obj.position = new_positions[i]
-                obj.velocity = new_velocities[i]
-                obj.acceleration = self.compute_acceleration(i)
+            # Update object states
+            for i, obj in enumerate(self.objects):
+                if not obj.pinned:
+                    obj.position = new_positions[i]
+                    obj.velocity = new_velocities[i]
+                    obj.acceleration = self.compute_acceleration(i)
 
-        # Advance simulation time
-        self.time += self.dt
+            # Advance simulation time
+            self.time += self.dt

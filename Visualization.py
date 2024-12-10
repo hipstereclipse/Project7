@@ -170,34 +170,87 @@ class StringSimulationSetup:
     """Setup GUI for string simulation configuration."""
 
     def __init__(self):
-        """Initialize the setup GUI."""
         self.root = tk.Tk()
         self.root.title("String Simulation Setup")
 
-        # Get default parameters from SimulationParameters
-        default_params = SimulationParameters()
+        # Set minimum window size
+        self.root.minsize(600, 400)
 
-        # Calculate window size - 40% width, 60% height of screen
-        window_width = int(self.root.winfo_screenwidth() * 0.4)
-        window_height = int(self.root.winfo_screenheight() * 0.6)
-        x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
+        # Default to 40% of screen width, 60% of screen height
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = int(screen_width * 0.4)
+        window_height = int(screen_height * 0.6)
+
+        # Center the window
+        x = (screen_width // 2) - (window_width // 2)
+        y = (screen_height // 2) - (window_height // 2)
+
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
-        # Initialize variables with defaults from SimulationParameters
-        self.num_segments_var = tk.IntVar(value=default_params.num_segments)
-        self.spring_constant_var = tk.DoubleVar(value=default_params.spring_constant)
-        self.mass_var = tk.DoubleVar(value=default_params.mass)
-        self.dt_var = tk.DoubleVar(value=default_params.dt)
-        self.integration_var = tk.StringVar(value=default_params.integration_method)
-        self.force_magnitude_var = tk.DoubleVar(value=1.0)  # Default force magnitude
-        self.dark_mode_var = tk.BooleanVar(value=True)
+        # Configure grid weights for responsive layout
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
 
-        # Store the final parameters
-        self.simulation_params = None
+        # Initialize variables
+        self.init_variables()
+
+        # Create responsive styles
+        self.create_responsive_styles()
 
         # Setup the GUI elements
         self.setup_gui()
+
+        # Bind resize event
+        self.root.bind('<Configure>', self.on_window_resize)
+
+    def create_responsive_styles(self):
+        """Create TTK styles that adapt to window size."""
+        style = ttk.Style()
+
+        # Base font sizes
+        self.base_header_size = 14
+        self.base_text_size = 10
+        self.base_button_size = 11
+
+        # Create initial styles
+        style.configure(
+            "Header.TLabel",
+            font=("Arial", self.base_header_size, "bold"),
+            anchor="center"
+        )
+        style.configure(
+            "Normal.TLabel",
+            font=("Arial", self.base_text_size),
+            anchor="w"
+        )
+        style.configure(
+            "Setup.TButton",
+            font=("Arial", self.base_button_size),
+            padding=10
+        )
+
+    def on_window_resize(self, event):
+        """Update styles based on window size."""
+        if event.widget == self.root:
+            # Calculate scale factor
+            width_scale = event.width / (self.root.winfo_screenwidth() * 0.4)
+            height_scale = event.height / (self.root.winfo_screenheight() * 0.6)
+            scale = min(width_scale, height_scale)
+
+            # Update font sizes
+            style = ttk.Style()
+            style.configure("Header.TLabel",
+                            font=("Arial", int(self.base_header_size * scale), "bold"))
+            style.configure("Normal.TLabel",
+                            font=("Arial", int(self.base_text_size * scale)))
+            style.configure("Setup.TButton",
+                            font=("Arial", int(self.base_button_size * scale)))
+
+            # Update padding
+            base_padding = 10
+            scaled_padding = int(base_padding * scale)
+            style.configure("Setup.TButton", padding=scaled_padding)
 
     def setup_gui(self):
         """Setup the main GUI elements."""
@@ -407,7 +460,8 @@ class SimulationVisualizer:
         self.physics = physics_model
         self.objects = objects
         self.dark_mode = dark_mode
-        self.paused = False
+        self.paused = True  # Start paused by default for data collection purposes
+        self.simulation_started = False  # Tracks if simulation has begun
         self.rotating = False
         self.panning = False
         self.plots = {}
@@ -694,24 +748,18 @@ class SimulationVisualizer:
         root.destroy()
 
     def update_frame(self, frame):
-        """
-        Update animation frame with proper timing tracking.
-        """
-        # Only update animation frame count and FPS when not paused
-        if not self.paused:
-            # Update animation frame count
+        """Update animation frame with proper timing tracking."""
+        # Only update when not paused and simulation has started
+        if not self.paused and self.simulation_started:
             self.animation_frame_count += 1
 
-            # Calculate FPS
             current_time = time.time()
             frame_time = current_time - self.last_frame_time
             self.frame_times.append(frame_time)
 
-            # Keep only recent frame times
             if len(self.frame_times) > self.max_frame_times:
                 self.frame_times.pop(0)
 
-            # Update FPS calculation
             if current_time - self.last_frame_time >= self.fps_update_interval:
                 if self.frame_times:
                     avg_frame_time = sum(self.frame_times) / len(self.frame_times)
@@ -721,7 +769,7 @@ class SimulationVisualizer:
             # Run physics steps
             i = self.iteration_count
             while i > 0:
-                self.physics.step()
+                self.physics.step(self.integration_method)
                 i -= 1
 
             # Check and handle force duration
@@ -734,7 +782,7 @@ class SimulationVisualizer:
             if self.force_handler.continuous and self.force_handler.active:
                 self.force_handler.apply()
 
-        # Always update the visualization
+        # Always update visualization
         self.update_plots()
         self.update_info()
         self.highlight_selected_object()
@@ -840,18 +888,23 @@ class SimulationVisualizer:
 
     def reset_simulation(self, event):
         """Reset simulation to initial state."""
-        # Reset time tracking
         self.animation_frame_count = 0
         self.fps = 0
         self.frame_times.clear()
         self.last_frame_time = time.time()
 
+        # Reset simulation state flags
+        self.simulation_started = False
+        self.paused = True
+        self.play_button.label.set_text('Start')
+
         # Reset physics state
-        self.physics.time = self.initial_physics_time  # Reset physics engine time
+        self.physics.time = self.initial_physics_time
+        self.physics.simulation_started = False
         self.force_handler.deactivate()
         self.force_handler.last_application_time = 0.0
 
-        # Reset all objects to initial state
+        # Reset object states
         for i, obj in enumerate(self.objects):
             obj.position = self.original_positions[i].copy()
             obj.velocity = self.original_velocities[i].copy()
@@ -862,28 +915,30 @@ class SimulationVisualizer:
         self.force_button.label.set_text('Apply Force')
         self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
 
-        # Clear the data history
+        # Clear data history
         self.physics.data_recorder.clear_history()
 
-        # Refresh the display
         self.fig.canvas.draw_idle()
 
     def toggle_force(self, event):
-        """
-        Toggle force application. If force is active, clicking again will cancel it.
-        """
+        """Toggle force application and handle simulation start."""
+        # If applying force and simulation hasn't started, start it
+        if not self.simulation_started and not self.force_handler.active:
+            self.simulation_started = True
+            self.physics.start_simulation()
+            self.paused = False  # Unpause when force is applied
+            self.play_button.label.set_text('Pause')
+
         result = self.force_handler.toggle()
         if result:
             label, color = result
             self.force_button.label.set_text(label)
             self.force_button.color = color
 
-            # Only apply force if we're activating (not deactivating)
             if self.force_handler.active:
                 self.force_handler.apply()
 
             self.fig.canvas.draw_idle()
-
     def toggle_continuous_force(self, event):
         """Toggle continuous force mode."""
         self.force_handler.continuous = not self.force_handler.continuous
@@ -929,9 +984,16 @@ class SimulationVisualizer:
 
     # Camera and view controls
     def toggle_pause(self, event):
-        """Toggle simulation pause state."""
+        """Toggle simulation pause state and handle simulation start."""
         self.paused = not self.paused
+
+        # If unpausing and simulation hasn't started, start it
+        if not self.paused and not self.simulation_started:
+            self.simulation_started = True
+            self.physics.start_simulation()
+
         self.play_button.label.set_text('Resume' if self.paused else 'Pause')
+        self.fig.canvas.draw_idle()
 
     def cycle_view(self, event):
         """Cycle through predefined views."""
@@ -1101,37 +1163,40 @@ class SimulationVisualizer:
 
 
 class AnalysisVisualizer:
-    """Interactive visualization system for analyzing string simulation data."""
+    """
+    Interactive visualization system for analyzing string simulation data.
+    Provides flexible analysis capabilities for any number of simulation files.
+    """
 
     def __init__(self):
-        """Initialize the analysis visualization system."""
+        """Initialize the analysis visualization system with enhanced flexibility."""
         from data_handling import DataAnalysis
         import tkinter as tk
         from tkinter import ttk
 
         # Initialize core components
         self.analyzer = DataAnalysis()  # Data analysis engine
-        self.loaded_files = {}  # Maps file paths to their data
+        self.loaded_files = {}  # Maps file paths to their simulation data
 
         # Set up main window
         self.root = tk.Tk()
         self.root.title("String Simulation Analysis")
 
-        # Set window size and position
+        # Calculate and set window dimensions
         window_width = int(self.root.winfo_screenwidth() * 0.55)
-        window_height = int(self.root.winfo_screenheight() * 0.45)
+        window_height = int(self.root.winfo_screenheight() * 0.35)
         x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
         y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
-        # Available colors for plotting
+        # Define color palette for visualization
         self.colors = ["red", "green", "blue", "yellow", "orange", "purple"]
 
         # Set up the GUI elements
         self.setup_gui()
 
     def setup_gui(self):
-        """Set up the main GUI elements."""
+        """Set up the main GUI elements with streamlined layout and improved organization."""
         # Create main frame with padding
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky="nsew")
@@ -1140,19 +1205,32 @@ class AnalysisVisualizer:
         file_frame = ttk.LabelFrame(self.main_frame, text="File Management", padding="5")
         file_frame.grid(row=0, column=0, sticky="ew", pady=5)
 
-        # File management buttons
+        # File management buttons with improved layout
         button_frame = ttk.Frame(file_frame)
         button_frame.grid(row=0, column=0, sticky="ew", padx=5)
+        button_frame.columnconfigure(1, weight=1)  # This makes the middle space expand
 
-        ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(row=0, column=0, padx=5)
-        ttk.Button(button_frame, text="Delete Selected", command=self.delete_selected).grid(row=0, column=1, padx=5)
-        ttk.Button(button_frame, text="Clear All", command=self.clear_files).grid(row=0, column=2, padx=5)
+        # Left-aligned load button
+        ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(
+            row=0, column=0, padx=5, sticky="w"
+        )
 
-        # Create treeview for file list
-        self.file_tree = ttk.Treeview(file_frame, show="headings", height=3)
+        # Right-aligned delete and clear buttons
+        delete_frame = ttk.Frame(button_frame)
+        delete_frame.grid(row=0, column=2, sticky="e")
+
+        ttk.Button(delete_frame, text="Delete Selected", command=self.delete_selected).pack(
+            side="left", padx=5
+        )
+        ttk.Button(delete_frame, text="Clear All", command=self.clear_files).pack(
+            side="left", padx=5
+        )
+
+        # Create treeview for file list with automatic selection
+        self.file_tree = ttk.Treeview(file_frame, show="headings", height=3, selectmode="extended")
         self.file_tree.grid(row=1, column=0, sticky="ew", pady=5)
 
-        # Configure treeview columns
+        # Configure treeview columns with improved visibility
         self.file_tree["columns"] = ("filename", "nodes", "frames", "time", "color")
         columns = [
             ("filename", "Filename", 200, "w"),
@@ -1166,73 +1244,101 @@ class AnalysisVisualizer:
             self.file_tree.heading(col, text=heading)
             self.file_tree.column(col, width=width, anchor=anchor)
 
-        # Bind double-click for color cycling
+        # Enable color cycling on double-click
         self.file_tree.bind("<Double-1>", self.cycle_color)
 
-        # Analysis buttons section
+        # Analysis options frame with simplified layout
         analysis_frame = ttk.LabelFrame(self.main_frame, text="Analysis Options", padding="5")
         analysis_frame.grid(row=1, column=0, sticky="ew", pady=5)
 
-        # Single file analysis buttons
-        single_frame = ttk.LabelFrame(analysis_frame, text="Single File Analysis", padding="5")
-        single_frame.grid(row=0, column=0, sticky="ew", padx=5)
-
-        single_buttons = [
+        # Define analysis buttons with their commands
+        analysis_buttons = [
             ("View Summary", self.show_summary),
-            ("Plot Node Movement", self.plot_nodes),
-            ("Find Stationary Nodes", self.find_stationary)
+            ("Find Stationary Nodes", self.compare_stationary),
+            ("Node Displacement", self.compare_displacement),
+            ("Average Displacements", self.plot_nodal_average_displacement),
+            ("Movement Patterns", self.compare_movement)
         ]
 
-        for i, (text, command) in enumerate(single_buttons):
-            ttk.Button(single_frame, text=text, command=command).grid(row=0, column=i, padx=5)
+        # Calculate button width based on frame width
+        analysis_frame.update_idletasks()  # Ensure frame dimensions are updated
+        button_width = analysis_frame.winfo_width() // (len(analysis_buttons) + 1)
 
-        # Comparative analysis buttons
-        comp_frame = ttk.LabelFrame(analysis_frame, text="Comparative Analysis", padding="5")
-        comp_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-
-        comp_buttons = [
-            ("Compare Node Displacement", self.compare_displacement),
-            ("Compare Movement Patterns", self.compare_movement),
-            ("Compare Stationary Nodes", self.compare_stationary)
-        ]
-
-        for i, (text, command) in enumerate(comp_buttons):
-            ttk.Button(comp_frame, text=text, command=command).grid(row=0, column=i, padx=5)
+        # Create analysis buttons with consistent spacing and size
+        for i, (text, command) in enumerate(analysis_buttons):
+            ttk.Button(analysis_frame, text=text, command=command).grid(
+                row=0, column=i, padx=5, pady=5, sticky="ew"
+            )
+            analysis_frame.columnconfigure(i, weight=1)  # Make columns expand evenly
 
     def load_files(self):
-        """Load simulation data files."""
+        """Load and automatically select simulation data files."""
         from tkinter import filedialog, messagebox
 
+        # Open file dialog for multiple file selection
         files = filedialog.askopenfilenames(
             title="Select Simulation Files",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
 
+        # Process each selected file
         for file_path in files:
             try:
-                # Load the file data
+                # Load the file data using the analyzer
                 data = self.analyzer.load_simulation(file_path)
                 self.loaded_files[file_path] = data
 
-                # Get file summary
+                # Get file summary information
                 summary = self.analyzer.get_simulation_summary(data)
 
-                # Add to treeview
-                self.file_tree.insert("", "end", values=(
+                # Insert into treeview with default color
+                item = self.file_tree.insert("", "end", values=(
                     os.path.basename(file_path),
                     summary['num_objects'],
                     summary['num_frames'],
                     f"{summary['simulation_time']:.3f} s",
-                    "red"  # Default color
+                    self.colors[len(self.loaded_files) % len(self.colors)]  # Cycle through colors
                 ))
+
+                # Automatically select the newly added item
+                self.file_tree.selection_add(item)
+
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load {file_path}:\n{str(e)}")
 
-    def get_selected_files(self):
-        """Get the file paths for selected items in the treeview."""
+    def delete_selected(self):
+        """Delete selected files from the analysis system."""
         selected_items = self.file_tree.selection()
-        selected_files = []
+        if not selected_items:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Please select files to delete.")
+            return
 
+        files_to_remove = []
+        # Build list of files to remove
+        for item in selected_items:
+            filename = self.file_tree.item(item)["values"][0]
+            # Find and store the full path
+            for path in self.loaded_files:
+                if os.path.basename(path) == filename:
+                    files_to_remove.append(path)
+                    break
+            # Remove from treeview
+            self.file_tree.delete(item)
+
+        # Remove from loaded files dictionary
+        for file_path in files_to_remove:
+            if file_path in self.loaded_files:
+                del self.loaded_files[file_path]
+
+    def get_selected_files(self):
+        """Get the file paths for visualization, defaulting to all loaded files if none selected."""
+        selected_items = self.file_tree.selection()
+
+        if not selected_items:  # If no files are selected, select all files
+            selected_items = self.file_tree.get_children()
+
+        selected_files = []
         for item in selected_items:
             filename = self.file_tree.item(item)["values"][0]
             # Find the full path matching this filename
@@ -1244,7 +1350,7 @@ class AnalysisVisualizer:
         return selected_files
 
     def cycle_color(self, event):
-        """Cycle through colors when a color cell is double-clicked."""
+        """Cycle through visualization colors for the selected file."""
         item = self.file_tree.identify_row(event.y)
         column = self.file_tree.identify_column(event.x)
 
@@ -1260,80 +1366,26 @@ class AnalysisVisualizer:
                 values[4] = self.colors[next_index]
                 self.file_tree.item(item, values=values)
 
-    def delete_selected(self):
-        """Delete selected files from the analysis."""
-        selected_items = self.file_tree.selection()
-        files_to_remove = self.get_selected_files()
-
-        # Remove from treeview
-        for item in selected_items:
-            self.file_tree.delete(item)
-
-        # Remove from loaded files
-        for file_path in files_to_remove:
-            if file_path in self.loaded_files:
-                del self.loaded_files[file_path]
-
     def clear_files(self):
-        """Clear all loaded files."""
+        """Clear all loaded files and reset the analyzer."""
         self.loaded_files.clear()
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
-        self.analyzer = DataAnalysis()  # Reset analyzer
-
-    def show_summary(self):
-        """Show summary of selected file."""
-        files = self.get_selected_files()
-        if not files:
-            from tkinter import messagebox
-            messagebox.showwarning("Warning", "Please select a file.")
-            return
-
-        # Create summary window for first selected file
-        summary = self.analyzer.get_simulation_summary(self.loaded_files[files[0]])
-
-        import tkinter as tk
-        window = tk.Toplevel(self.root)
-        window.title("Simulation Summary")
-
-        text = tk.Text(window, wrap=tk.WORD, width=50, height=20)
-        text.pack(padx=10, pady=10)
-
-        # Add summary information
-        text.insert("end", f"Number of frames: {summary['num_frames']}\n")
-        text.insert("end", f"Simulation time: {summary['simulation_time']:.3f} s\n")
-        text.insert("end", f"Number of objects: {summary['num_objects']}\n")
-        text.insert("end", f"Stationary nodes: {summary['num_stationary_nodes']}\n\n")
-
-        for node_id, pos in summary['stationary_node_positions'].items():
-            text.insert("end", f"Node {node_id} position: {pos}\n")
-
-        text.config(state=tk.DISABLED)
-
-    def plot_nodes(self):
-        """Plot movement of selected nodes."""
-        files = self.get_selected_files()
-        if not files:
-            from tkinter import messagebox
-            messagebox.showwarning("Warning", "Please select a file.")
-            return
-
-        # Create node selection dialog
-        self.create_node_selection_dialog(files[0])
+        self.analyzer = DataAnalysis()
 
     def compare_movement(self):
-        """Compare movement patterns between simulations."""
+        """Visualize movement patterns for loaded simulations."""
         files = self.get_selected_files()
-        if len(files) < 2:
+        if not files:
             from tkinter import messagebox
-            messagebox.showwarning("Warning", "Please select at least two files.")
+            messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
         import matplotlib.pyplot as plt
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111, projection='3d')
 
-        # Plot each simulation with its color
+        # Plot trajectories for each simulation
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item)["values"]
             filename = values[0]
@@ -1344,7 +1396,7 @@ class AnalysisVisualizer:
             if file_path:
                 data = self.loaded_files[file_path]
 
-                # Plot each node's trajectory
+                # Plot trajectories for each node
                 num_nodes = self.analyzer.get_simulation_summary(data)['num_objects']
                 for node in range(num_nodes):
                     x, y, z = self.analyzer.get_object_trajectory(data, node)
@@ -1353,6 +1405,7 @@ class AnalysisVisualizer:
                 # Add to legend
                 ax.plot([], [], color=color, label=filename)
 
+        # Configure plot appearance
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
@@ -1362,76 +1415,105 @@ class AnalysisVisualizer:
         plt.show()
 
     def compare_displacement(self):
-        """Compare node displacements between simulations."""
+        """Compare node displacements across simulations."""
         files = self.get_selected_files()
-        if len(files) < 2:
+        if not files:
             from tkinter import messagebox
-            messagebox.showwarning("Warning", "Please select at least two files.")
+            messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
-        # Create node selection dialog to choose which node to compare
-        self.create_node_selection_dialog(files[0], compare_mode=True)
+        # Create node selection dialog
+        self.create_node_selection_dialog(files[0])
 
-    def create_node_selection_dialog(self, file_path, compare_mode=False):
-        """Create dialog for selecting nodes to analyze."""
+    def compare_displacement(self):
+        """Compare node displacements across simulations."""
+        files = self.get_selected_files()
+        if not files:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        # Create node selection dialog
+        self.create_node_selection_dialog(files[0])
+
+    def create_node_selection_dialog(self, file_path):
+        """
+        Create a dialog window for selecting nodes to analyze.
+
+        Args:
+            file_path: Path to the simulation file being analyzed
+        """
         import tkinter as tk
         from tkinter import ttk
 
         dialog = tk.Toplevel(self.root)
-        dialog.title("Select Nodes")
+        dialog.title("Select Node to Analyze")
 
-        # Get number of nodes
+        # Make dialog modal
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Get number of nodes from the simulation data
         data = self.loaded_files[file_path]
         num_nodes = self.analyzer.get_simulation_summary(data)['num_objects']
 
-        # Create listbox
-        listbox = tk.Listbox(dialog, selectmode=tk.MULTIPLE if not compare_mode else tk.SINGLE)
-        listbox.pack(padx=10, pady=10)
+        # Create node selection list
+        frame = ttk.Frame(dialog, padding="10")
+        frame.pack(fill=tk.BOTH, expand=True)
 
-        # Add node numbers
+        ttk.Label(frame, text="Select a node to analyze:").pack(pady=(0, 5))
+
+        # Create listbox for node selection
+        listbox = tk.Listbox(frame, selectmode=tk.SINGLE, height=10)
+        listbox.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        listbox.configure(yscrollcommand=scrollbar.set)
+
+        # Add node numbers to listbox
         for i in range(num_nodes):
             listbox.insert(tk.END, f"Node {i}")
 
         def on_ok():
-            selected = [int(listbox.get(idx).split()[1]) for idx in listbox.curselection()]
-            if selected:
+            """Handle OK button click."""
+            selections = listbox.curselection()
+            if selections:
+                node_id = int(listbox.get(selections[0]).split()[1])
                 dialog.destroy()
-                if compare_mode:
-                    self.plot_displacement_comparison(selected[0])
-                else:
-                    self.plot_node_trajectories(file_path, selected)
+                # Hide the main window while showing the plot
+                self.root.withdraw()
+                # Show the plot
+                self.plot_displacement_comparison(node_id)
+                # Show the main window again
+                self.root.deiconify()
             else:
                 from tkinter import messagebox
-                messagebox.showwarning("Warning", "Please select at least one node.")
+                messagebox.showwarning("Warning", "Please select a node.")
 
-        ttk.Button(dialog, text="OK", command=on_ok).pack(pady=5)
-        ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(pady=5)
+        def on_cancel():
+            """Handle cancel button click."""
+            dialog.destroy()
 
-    def plot_node_trajectories(self, file_path, nodes):
-        """Plot trajectories for selected nodes."""
-        import matplotlib.pyplot as plt
+        # Add buttons
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(pady=10)
 
-        data = self.loaded_files[file_path]
-        fig = plt.figure(figsize=(12, 8))
-        ax = fig.add_subplot(111, projection='3d')
+        ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
 
-        for node in nodes:
-            x, y, z = self.analyzer.get_object_trajectory(data, node)
-            ax.plot(x, y, z, label=f'Node {node}')
-
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_title('Node Trajectories')
-        ax.legend()
-
-        plt.show()
+        # Center dialog on screen
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f'+{x}+{y}')
 
     def plot_displacement_comparison(self, node_id):
         """
-        Plot displacement comparison for a selected node across multiple simulations.
-        Shows the displacement over time for the same node in different simulations,
-        using consistent colors from the file list.
+        Plot displacement comparison for a selected node across all active simulations.
 
         Args:
             node_id: ID of the node to compare across simulations
@@ -1439,12 +1521,16 @@ class AnalysisVisualizer:
         import matplotlib.pyplot as plt
         import numpy as np
 
+        # Create a new figure with a larger size
+        plt.figure(figsize=(12, 8))
+
         files = self.get_selected_files()
+        if not files:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
 
-        # Create the plot
-        plt.figure(figsize=(12, 6))
-
-        # Plot data for each selected simulation
+        # Plot data for each simulation
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item)["values"]
             filename = values[0]
@@ -1455,19 +1541,26 @@ class AnalysisVisualizer:
             if file_path:
                 data = self.loaded_files[file_path]
 
-                # Get position data for the node
-                x, y, z = self.analyzer.get_object_trajectory(data, node_id)
-                positions = np.column_stack([x, y, z])
+                try:
+                    # Get position data for the node
+                    x, y, z = self.analyzer.get_object_trajectory(data, node_id)
+                    positions = np.column_stack([x, y, z])
 
-                # Calculate displacement from initial position
-                initial_pos = positions[0]
-                displacements = np.linalg.norm(positions - initial_pos, axis=1)
+                    # Calculate displacement from initial position
+                    initial_pos = positions[0]
+                    displacements = np.linalg.norm(positions - initial_pos, axis=1)
 
-                # Get time values from the data
-                time = np.array(range(len(displacements))) * self.analyzer.simulations[data]['Time'].diff().mean()
+                    # Calculate time values based on simulation data
+                    time_step = self.analyzer.simulations[data]['Time'].diff().mean()
+                    time = np.arange(len(displacements)) * time_step
 
-                # Plot with the color from the file list
-                plt.plot(time, displacements, color=color, label=filename)
+                    # Plot with the color from the file list
+                    plt.plot(time, displacements, color=color, label=filename)
+
+                except Exception as e:
+                    from tkinter import messagebox
+                    messagebox.showerror("Error", f"Error plotting {filename}: {str(e)}")
+                    continue
 
         # Configure the plot
         plt.xlabel('Time (s)')
@@ -1476,51 +1569,73 @@ class AnalysisVisualizer:
         plt.grid(True, alpha=0.3)
         plt.legend()
 
+        # Show the plot - this blocks until the plot window is closed
         plt.show()
 
-    def find_stationary(self):
-        """Find stationary nodes in selected simulation."""
+    def plot_nodal_average_displacement(self):
+        """Compare average node displacements across simulations."""
         files = self.get_selected_files()
         if not files:
             from tkinter import messagebox
-            messagebox.showwarning("Warning", "Please select a file.")
+            messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
-        # Find stationary nodes in first selected file
-        data = self.loaded_files[files[0]]
-        stationary = self.analyzer.find_stationary_nodes(data)
+        import matplotlib.pyplot as plt
+        import numpy as np
 
-        # Show results
-        import tkinter as tk
-        window = tk.Toplevel(self.root)
-        window.title("Stationary Nodes")
+        plt.figure(figsize=(12, 6))
 
-        text = tk.Text(window, wrap=tk.WORD, width=50, height=20)
-        text.pack(padx=10, pady=10)
+        # Calculate and plot average displacements for each simulation
+        for item in self.file_tree.get_children():
+            values = self.file_tree.item(item)["values"]
+            filename = values[0]
+            color = values[4]
 
-        text.insert("end", f"Found {len(stationary)} stationary nodes:\n\n")
-        for node_id, pos in stationary.items():
-            text.insert("end", f"Node {node_id}:\n")
-            text.insert("end", f"  Position: {pos}\n")
-            text.insert("end", f"  Displacement: {np.linalg.norm(pos):.6f}\n\n")
+            file_path = next((p for p in files if os.path.basename(p) == filename), None)
+            if file_path:
+                data = self.loaded_files[file_path]
+                num_nodes = self.analyzer.get_simulation_summary(data)['num_objects']
 
-        text.config(state=tk.DISABLED)
+                # Calculate average displacement for each node
+                avg_displacements = []
+                for node_id in range(num_nodes):
+                    x, y, z = self.analyzer.get_object_trajectory(data, node_id)
+                    positions = np.column_stack([x, y, z])
+                    initial_pos = positions[0]
+                    displacements = np.linalg.norm(positions - initial_pos, axis=1)
+                    avg_displacements.append(np.mean(displacements))
+
+                plt.plot(range(num_nodes), avg_displacements,
+                         color=color, label=filename, marker='o')
+
+        # Configure plot appearance
+        plt.xlabel('Node ID')
+        plt.ylabel('Average Displacement')
+        plt.title('Average Node Displacement Comparison')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+
+        # Set integer ticks for node IDs
+        ax = plt.gca()
+        ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+
+        plt.show()
 
     def compare_stationary(self):
-        """Compare stationary nodes between simulations."""
+        """Analyze and compare stationary nodes across simulations."""
         files = self.get_selected_files()
-        if len(files) < 2:
+        if not files:
             from tkinter import messagebox
-            messagebox.showwarning("Warning", "Please select at least two files.")
+            messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
-        # Get comparison of stationary nodes
+        # Compare stationary nodes across simulations
         comparison = {}
         for file_path in files:
             data = self.loaded_files[file_path]
             comparison[os.path.basename(file_path)] = self.analyzer.find_stationary_nodes(data)
 
-        # Show results
+        # Display results in a new window
         import tkinter as tk
         window = tk.Toplevel(self.root)
         window.title("Stationary Nodes Comparison")
@@ -1528,6 +1643,7 @@ class AnalysisVisualizer:
         text = tk.Text(window, wrap=tk.WORD, width=60, height=30)
         text.pack(padx=10, pady=10)
 
+        # Format and display comparison results
         for filename, nodes in comparison.items():
             text.insert("end", f"\nSimulation: {filename}\n{'=' * 50}\n")
             if nodes:
@@ -1538,6 +1654,38 @@ class AnalysisVisualizer:
                     text.insert("end", f"  Displacement: {np.linalg.norm(pos):.6f}\n")
             else:
                 text.insert("end", "No stationary nodes found\n")
+
+        text.config(state=tk.DISABLED)
+
+    def show_summary(self):
+        """Display summary information for selected simulations."""
+        files = self.get_selected_files()
+        if not files:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        # Create summary window
+        import tkinter as tk
+        window = tk.Toplevel(self.root)
+        window.title("Simulation Summary")
+
+        text = tk.Text(window, wrap=tk.WORD, width=60, height=30)
+        text.pack(padx=10, pady=10)
+
+        # Display summary for each selected file
+        for file_path in files:
+            summary = self.analyzer.get_simulation_summary(self.loaded_files[file_path])
+            filename = os.path.basename(file_path)
+
+            text.insert("end", f"\nFile: {filename}\n{'=' * 50}\n")
+            text.insert("end", f"Number of frames: {summary['num_frames']}\n")
+            text.insert("end", f"Simulation time: {summary['simulation_time']:.3f} s\n")
+            text.insert("end", f"Number of objects: {summary['num_objects']}\n")
+            text.insert("end", f"Stationary nodes: {summary['num_stationary_nodes']}\n\n")
+
+            for node_id, pos in summary['stationary_node_positions'].items():
+                text.insert("end", f"Node {node_id} position: {pos}\n")
 
         text.config(state=tk.DISABLED)
 
