@@ -11,15 +11,19 @@ The module contains two main components:
 - SimulationDataRecorder class for managing simulation history
 - Utility functions for direct file I/O operations
 """
-
+import time
 import csv
 import os
+from typing import List, Optional, Tuple
+from Mass import SimulationObject
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from typing import List, Tuple, Dict
+import matplotlib.pyplot as plt
 
 from Mass import SimulationObject
 
@@ -62,6 +66,25 @@ class SimulationDataRecorder:
         self.frame_count = 0            # Tracks number of recorded frames
         self.simulation_time = 0.0      # Tracks current simulation time
 
+        self.objects = objects
+        self.time_history = []
+        self.position_history = []
+        self.velocity_history = []
+        self.acceleration_history = []
+        self.frame_count = 0
+        self.simulation_time = 0.0
+
+        # Add new attributes for enhanced functionality
+        self.metadata = {
+            'num_objects': len(objects),
+            'pinned_objects': [i for i, obj in enumerate(objects) if obj.pinned],
+            'creation_time': time.time(),
+            'last_modified': time.time()
+        }
+
+        # Add force tracking
+        self.force_history = []
+
     def record_step(self, time: float, objects: List[SimulationObject]) -> None:
         """
         Record the state of all objects at the current simulation step.
@@ -84,17 +107,19 @@ class SimulationDataRecorder:
         velocities = []
         accelerations = []
 
-        # Record state data for each object
-        for obj in objects:
-            # Extend lists with x, y, z components
-            positions.extend(obj.position)       # Add position vector components
-            velocities.extend(obj.velocity)      # Add velocity vector components
-            accelerations.extend(obj.acceleration)  # Add acceleration vector components
+        for i, obj in enumerate(objects):
+            positions.extend(obj.position)
+            velocities.extend(obj.velocity)
+            accelerations.extend(obj.acceleration)
+            if forces:
+                current_forces.extend(forces.get(obj.obj_id, np.zeros(3)))
 
         # Store the current frame's data
         self.position_history.append(positions)
         self.velocity_history.append(velocities)
         self.acceleration_history.append(accelerations)
+        self.force_history.append(current_forces)
+
 
     def clear_history(self) -> None:
         """
@@ -314,6 +339,7 @@ def get_object_positions(headers: List[str], columns: List[List[float]], obj_id:
 
     return columns[x_idx], columns[y_idx], columns[z_idx]
 
+
 class DataAnalysis:
     """
     Analyzes and compares data from multiple string simulation runs.
@@ -416,14 +442,12 @@ class DataAnalysis:
         Get position data for a specific object in a specific simulation.
 
         Args:
-            simulation_id: Identifier for the simulation to analyze
             obj_id: ID of the object to analyze
 
         Returns:
             Tuple containing arrays of x, y, and z positions
 
         Raises:
-            KeyError: If simulation_id is not found
             ValueError: If object ID is invalid
         """
         if simulation_id not in self.simulations:

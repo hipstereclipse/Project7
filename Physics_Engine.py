@@ -3,6 +3,7 @@ from typing import List, Optional, Dict
 from Mass import SimulationObject
 from Integrator import INTEGRATORS
 
+
 class PhysicsEngine:
     """Physics engine for string simulation using Hooke's Law."""
 
@@ -140,7 +141,7 @@ class PhysicsEngine:
         accelerations = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])  # Accelerations
 
         # Prepare for integration
-        if integration_method in ['leapfrog', 'euler_croner', 'euler', 'rk2', 'rk4']:
+        if integration_method in ['leapfrog', 'euler_croner', 'rk2']:
             # A function to recompute accelerations during integration
             def get_accelerations(pos):
                 original_positions = positions.copy()
@@ -168,6 +169,3 @@ class PhysicsEngine:
 
         # Advance simulation time
         self.time += self.dt
-
-        # Record data after updating positions
-        self.data_recorder.record_step(self.time, self.objects)
