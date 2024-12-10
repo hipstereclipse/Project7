@@ -680,6 +680,11 @@ class StringSimulationSetup:
         self.fig.canvas.draw_idle()
 
     def save_simulation_data(self, event):
+        if not self.paused:
+            self.toggle_pause(None)
+            self.play_button.label.set_text('Resume')
+            self.fig.canvas.draw_idle()
+
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.asksaveasfilename(
@@ -687,6 +692,7 @@ class StringSimulationSetup:
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
             title="Save Simulation Data"
         )
+
         if file_path:
             try:
                 self.physics.data_recorder.save_to_csv(file_path)
@@ -699,7 +705,8 @@ class StringSimulationSetup:
                     "Error",
                     f"Failed to save data: {str(e)}"
                 )
-        self.paused = was_paused
+
+        root.destroy()
 
     def validate_parameters(self):
         try:
@@ -835,6 +842,7 @@ class SimulationVisualizer:
         self._connect_events()
 
         text_color = 'white' if self.dark_mode else 'black'
+        # Create force_info and camera_info texts and register them in plotter's ui_elements:
         self.force_info_text = self.ax.text2D(
             1.15, 0.55,
             '',
@@ -843,6 +851,17 @@ class SimulationVisualizer:
             fontsize=10,
             verticalalignment='top'
         )
+        self.plotter.ui_elements['text']['force_info'] = self.force_info_text
+
+        self.camera_info_text = self.ax.text2D(
+            1.15, 0.40,
+            '',
+            transform=self.ax.transAxes,
+            color=text_color,
+            fontsize=10,
+            verticalalignment='top'
+        )
+        self.plotter.ui_elements['text']['camera_info'] = self.camera_info_text
 
     def setup_plots(self):
         for i, obj in enumerate(self.objects):
@@ -891,7 +910,6 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def setup_controls(self):
-        # This was defined but might not be used now, left for completeness
         pass
 
     def setup_enhanced_controls(self):
@@ -1011,8 +1029,8 @@ class SimulationVisualizer:
                 self.rotating = True
             elif event.button == 3:
                 self.panning = True
-            self.last_x = event.xdata
-            self.last_y = event.ydata
+            self.last_x = event.x
+            self.last_y = event.y
             if self.view_button.label.get_text() != 'View: Free':
                 self.view_button.label.set_text('View: Free')
 
@@ -1023,14 +1041,14 @@ class SimulationVisualizer:
     def on_mouse_move(self, event):
         if event.inaxes == self.ax and hasattr(self, 'last_x'):
             if self.rotating:
-                dx = event.xdata - self.last_x
-                dy = event.ydata - self.last_y
+                dx = event.x - self.last_x
+                dy = event.y - self.last_y
 
                 self.camera['azimuth'] = (self.camera['azimuth'] + dx * self.camera['rotation_speed']) % 360
-                self.camera['elevation'] = np.clip(self.camera['elevation'] + dy * self.camera['rotation_speed'], -89, 89)
+                self.camera['elevation'] = np.clip(self.camera['elevation'] + (-dy) * self.camera['rotation_speed'], -89, 89)
 
-                self.last_x = event.xdata
-                self.last_y = event.ydata
+                self.last_x = event.x
+                self.last_y = event.y
                 self.update_camera()
 
     def on_scroll(self, event):
@@ -1072,8 +1090,8 @@ class SimulationVisualizer:
         self.update_info()
         self.highlight_selected_object()
 
-        return [plot['scatter'] for plot in self.plots.values()] + \
-            [plot['line'] for plot in self.plots.values() if plot['line'] is not None]
+        # Return no blit artists because 3D + blit is problematic
+        return []
 
     def update_plots(self):
         for i, obj in enumerate(self.objects):
@@ -1103,19 +1121,30 @@ class SimulationVisualizer:
         )
         self.info_text.set_text(info_text)
         self.update_force_info()
-        self.update_camera_info()
 
     def update_force_info(self):
-        text = (
-            f"Force Active: {self.force_handler.active}\n"
-            f"Continuous: {self.force_handler.continuous}\n"
-            f"Amplitude: {self.force_handler.amplitude:.2f}\n"
-            f"Duration: {self.force_handler.duration:.2f}s\n"
-            f"Object: {self.force_handler.selected_object}\n"
-            f"Type: {self.force_handler.selected_type}\n"
-            f"Direction: {self.force_handler.selected_direction}"
+        # Retrieve forces from the physics model for the selected object
+        external_force, spring_forces, total_force = self.physics.get_forces_on_object(
+            self.force_handler.selected_object)
+
+        # Format force information as requested
+        force_text = (
+            f"Forces on Mass {self.force_handler.selected_object}:\n"
+            f"─────────────────────────\n"
+            f"External Force:\n"
+            f"  X: {external_force[0]:8.3f} N\n"
+            f"  Y: {external_force[1]:8.3f} N\n"
+            f"  Z: {external_force[2]:8.3f} N\n"
+            f"Spring Forces:\n"
+            f"  X: {spring_forces[0]:8.3f} N\n"
+            f"  Y: {spring_forces[1]:8.3f} N\n"
+            f"  Z: {spring_forces[2]:8.3f} N\n"
+            f"Total Force:\n"
+            f"  X: {total_force[0]:8.3f} N\n"
+            f"  Y: {total_force[1]:8.3f} N\n"
+            f"  Z: {total_force[2]:8.3f} N\n"
         )
-        self.plotter.update_text('force_info', text)
+        self.plotter.update_text('force_info', force_text)
 
     def update_camera_info(self):
         text = (
@@ -1143,7 +1172,7 @@ class SimulationVisualizer:
             self.fig,
             self.update_frame,
             interval=20,
-            blit=True,
+            blit=False,  # Disable blit for proper 3D and text updates
             cache_frame_data=False
         )
         plt.show()
@@ -1189,7 +1218,6 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def save_simulation_data(self, event):
-        # Removed call to super(SimulationVisualizer, self).save_simulation_data(event) because it doesn't exist.
         if not self.paused:
             self.toggle_pause(None)
             self.play_button.label.set_text('Resume')
@@ -1230,7 +1258,7 @@ class SimulationVisualizer:
                     self.fig,
                     self.update_frame,
                     interval=20,
-                    blit=True,
+                    blit=False,
                     cache_frame_data=False
                 )
 
@@ -1343,6 +1371,7 @@ class SimulationVisualizer:
         self.ax.set_ylabel('Y')
         self.ax.set_zlabel('Z')
         self.ax.grid(True, alpha=0.3)
+        self.fig.canvas.draw_idle()
 
     def toggle_theme(self, event):
         self.dark_mode = not self.dark_mode
@@ -1820,8 +1849,6 @@ class AnalysisVisualizer:
             self.root.deiconify()
 
     def plot_harmonic_correlation(self, files):
-        # For brevity, implementing harmonic correlation plotting is optional.
-        # Just show an empty plot or implement as needed.
         fig = plt.figure(figsize=(15, 5))
         plt.title("Harmonic Analysis Placeholder")
         plt.show()
