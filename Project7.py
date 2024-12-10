@@ -123,28 +123,29 @@ class MainMenu:
         )
         version_label.grid(row=3, column=0, pady=(10, 0))
 
+        pass
+
     def start_simulation(self):
         """Launch the simulation setup and handling loop."""
         self.root.withdraw()  # Hide main menu
 
-        while True:
-            # Create and run the setup GUI
-            setup = StringSimulationSetup(self.root)  # Pass main menu root
-            params = setup.get_parameters()
+        # Create setup GUI and wait for parameters
+        setup = StringSimulationSetup(self.root)
+        setup.root.wait_window()  # Wait for setup window to close
+        params = setup.simulation_params  # Get params after window closes
 
-            # Check if setup was cancelled or failed
-            if params is None:
-                print("Simulation setup was cancelled or failed")
-                break
-
-            # Create and run simulation
+        if params is not None:
+            # Create and run simulation only if parameters were set
             simulation = StringSimulation(params)
             should_restart = simulation.run()
 
-            if not should_restart:
-                break
+            # If simulation signals restart, recursively call start_simulation
+            if should_restart:
+                self.start_simulation()
+                return
 
-        self.root.deiconify()  # Show main menu again
+        # Show main menu again if setup was cancelled or simulation ended
+        self.root.deiconify()
 
     def start_analysis(self):
         """Launch the analysis visualization system."""
