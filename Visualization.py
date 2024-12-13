@@ -3,28 +3,19 @@ import time
 import tkinter as tk
 from dataclasses import dataclass, field
 from enum import Enum
-from tkinter import ttk, messagebox
-from typing import List, Optional, Tuple, Union, Dict
+from tkinter import ttk, filedialog, messagebox
+from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
-from mpl_toolkits.mplot3d import Axes3D
-
-from data_handling import DataAnalysis
-
-import os
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import numpy as np
-import matplotlib.pyplot as plt
 
 from data_handling import DataAnalysis
 
 
 class ViewPreset(Enum):
-    """Predefined view angles for the simulation."""
+    """Predefined camera view angle presets for the 3D simulation plot."""
     DEFAULT = {"name": "Default", "azim": 45, "elev": 15}
     TOP = {"name": "Top (XY)", "azim": 0, "elev": 90}
     FRONT = {"name": "Front (XZ)", "azim": 0, "elev": 0}
@@ -35,12 +26,17 @@ class ViewPreset(Enum):
 
 @dataclass
 class PlotConfig:
-    """Configuration settings for plot customization."""
+    """
+    Configuration settings for customizing plots, including padding, axis labels,
+    figure size, and whether the plot is 2D or 3D. Also includes optional view presets
+    and grid/legend settings.
+    """
+    # Basic parameters for labels and scales
     title: Optional[str] = None
     xlabel: Optional[str] = None
     ylabel: Optional[str] = None
-    zlabel: Optional[str] = None  # For 3D plots
-    y2label: Optional[str] = None  # For dual axis plots
+    zlabel: Optional[str] = None
+    y2label: Optional[str] = None
     xscale: str = 'linear'
     yscale: str = 'linear'
     y2scale: str = 'linear'
@@ -50,7 +46,7 @@ class PlotConfig:
     style: str = 'default'
     colors: Optional[List[str]] = None
 
-    # 3D specific settings
+    # 3D-specific parameters
     is_3d: bool = False
     view_preset: Optional[ViewPreset] = None
     interactive_3d: bool = True
@@ -59,9 +55,25 @@ class PlotConfig:
     auto_rotate: bool = False
     rotation_speed: float = 1.0
 
+    # Padding and spacing controls for titles, labels, and subplots
+    title_pad: float = 20
+    xlabel_pad: float = 10
+    ylabel_pad: float = 10
+    zlabel_pad: float = 10
+    legend_pad: float = 0.1
+    tick_pad: float = 5
+    subplot_top_pad: float = 0.9
+    subplot_bottom_pad: float = 0.1
+    subplot_left_pad: float = 0.1
+    subplot_right_pad: float = 0.9
+
 
 class PlottingToolkit:
-    """Enhanced plotting toolkit with 2D and 3D visualization capabilities."""
+    """
+    A toolkit class for creating and managing 2D/3D matplotlib plots,
+    including UI elements like buttons, sliders, and radio buttons.
+    It provides methods to customize views, themes, and plot data.
+    """
     DEFAULT_CONFIG = {
         'enable_view_cycling': True,
         'enable_zoom_controls': True,
@@ -99,6 +111,7 @@ class PlottingToolkit:
     }
 
     def __init__(self):
+        # Initialize default colors and states
         self.default_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
         self.current_rotation = 0
         self.animation_running = False
@@ -108,13 +121,24 @@ class PlottingToolkit:
         self._mouse_button = None
         self._mouse_x = None
         self._mouse_y = None
+        # Camera settings for 3D view manipulation
         self.camera = {'distance': 2.0, 'azimuth': 45, 'elevation': 15, 'rotation_speed': 0.3, 'zoom_speed': 0.1}
         self.config = dict(self.DEFAULT_CONFIG)
         self.dark_mode = self.config['dark_mode']
         self.current_theme = 'dark' if self.dark_mode else 'light'
 
     def create_figure(self, config: PlotConfig) -> Tuple[plt.Figure, plt.Axes]:
-        # Ensure a new figure is created cleanly
+        """
+        Create a new figure and axes object based on the provided configuration.
+        Applies styles, padding, and axis labels as requested.
+
+        Args:
+            config: A PlotConfig instance containing plot setup preferences.
+
+        Returns:
+            (Figure, Axes) from matplotlib.
+        """
+        # Close any existing figure to avoid conflicts
         if self.fig is not None:
             plt.close(self.fig)
             self.fig = None
@@ -123,10 +147,11 @@ class PlottingToolkit:
         plt.style.use(config.style)
         self.fig = plt.figure(figsize=config.figure_size)
 
+        # Create a 3D axes if requested, else 2D axes
         if config.is_3d:
             self.ax = self.fig.add_subplot(111, projection='3d')
             if config.zlabel:
-                self.ax.set_zlabel(config.zlabel)
+                self.ax.set_zlabel(config.zlabel, labelpad=config.zlabel_pad)
             if config.view_preset:
                 self.ax.view_init(
                     elev=config.view_preset.value["elev"],
@@ -135,93 +160,159 @@ class PlottingToolkit:
         else:
             self.ax = self.fig.add_subplot(111)
 
-        # Adjust for side panel if needed
-        if config.legend_position == 'right' or config.show_view_controls or config.show_animation_controls:
-            plt.subplots_adjust(right=0.85)
+        # Apply subplot padding
+        plt.subplots_adjust(
+            top=config.subplot_top_pad,
+            bottom=config.subplot_bottom_pad,
+            left=config.subplot_left_pad,
+            right=config.subplot_right_pad
+        )
 
+        # Set title and axes labels with padding
         if config.title:
-            self.ax.set_title(config.title)
+            self.ax.set_title(config.title, pad=config.title_pad)
         if config.xlabel:
-            self.ax.set_xlabel(config.xlabel)
+            self.ax.set_xlabel(config.xlabel, labelpad=config.xlabel_pad)
         if config.ylabel:
-            self.ax.set_ylabel(config.ylabel)
+            self.ax.set_ylabel(config.ylabel, labelpad=config.ylabel_pad)
 
+        # Set axes scales for 2D plots
         if not config.is_3d:
             self.ax.set_xscale(config.xscale)
             self.ax.set_yscale(config.yscale)
 
-        self.ax.grid(config.grid, alpha=0.3)
+        # Apply tick padding
+        self.ax.tick_params(pad=config.tick_pad)
 
-        # Ensure figure redraw to avoid premature crashing
+        # Configure grid
+        self.ax.grid(config.grid, alpha=0.3)
         self.fig.canvas.draw_idle()
 
         return self.fig, self.ax
 
     def plot(self, x, y, z=None, new_figure=True, legend_kwargs=None, **kwargs):
+        """
+        Plot data (2D or 3D) using various plot types (line, scatter, bar),
+        with optional new figure creation and custom legend.
+
+        Args:
+            x, y: Data coordinates for 2D or 3D plotting
+            z: Optional, if provided and is_3d is True, plots in 3D
+            new_figure: Whether to create a new figure for this plot
+            legend_kwargs: Parameters for legend customization
+            **kwargs: Additional plot configuration arguments.
+        """
+        # Extract PlotConfig-compatible arguments
         config = PlotConfig(**{k: v for k, v in kwargs.items() if k in PlotConfig.__annotations__})
 
+        # If requested, create a new figure or if no figure exists
         if new_figure or self.fig is None:
             self.fig, self.ax = self.create_figure(config)
 
+        # Set default legend parameters and merge with user-provided ones
+        default_legend_kwargs = {
+            'loc': 'best',
+            'bbox_to_anchor': (1 + config.legend_pad, 1),
+            'frameon': True,
+            'fancybox': True
+        }
         legend_kwargs = legend_kwargs or {}
-        legend_kwargs.setdefault('loc', 'best')
-        legend_kwargs.setdefault('frameon', True)
-        legend_kwargs.setdefault('fancybox', True)
+        default_legend_kwargs.update(legend_kwargs)
 
         plot_type = kwargs.get('plot_type', 'line')
         color = kwargs.get('color', self.default_colors[0])
         alpha = kwargs.get('alpha', 1.0)
 
-        if z is not None:
-            # 3D plotting
-            if plot_type == 'scatter':
-                self.ax.scatter(x, y, z, marker=kwargs.get('marker_style', 'o'), color=color, alpha=alpha,
-                                label=kwargs.get('label'))
-            elif plot_type == 'line':
-                self.ax.plot(x, y, z, linestyle=kwargs.get('line_style', '-'), linewidth=kwargs.get('line_width', 1.5),
-                             color=color, alpha=alpha, label=kwargs.get('label'))
-            elif plot_type == 'surface':
-                surf = self.ax.plot_surface(x, y, z, cmap=kwargs.get('color_map', 'viridis'), alpha=alpha, linewidth=0)
-                if kwargs.get('colorbar', True):
-                    self.fig.colorbar(surf)
+        # Decide whether to plot in 2D or 3D
+        if z is not None and config.is_3d:
+            self._plot_3d(x, y, z, plot_type, color, alpha, kwargs)
         else:
-            # 2D plotting
-            if plot_type == 'line':
-                self.ax.plot(x, y, color=color, linestyle=kwargs.get('line_style', '-'),
-                             marker=kwargs.get('marker_style', None),
-                             alpha=alpha, linewidth=kwargs.get('line_width', 1.5), label=kwargs.get('label'))
-            elif plot_type == 'bar':
-                self.ax.bar(x, y, color=color, alpha=alpha, label=kwargs.get('label'))
-            elif plot_type == 'scatter':
-                self.ax.scatter(x, y, color=color, marker=kwargs.get('marker_style', 'o'), alpha=alpha,
-                                label=kwargs.get('label'))
+            self._plot_2d(x, y, plot_type, color, alpha, kwargs)
 
+        # If a label is provided, add a legend
         if 'label' in kwargs:
-            self.ax.legend(**legend_kwargs)
+            self.ax.legend(**default_legend_kwargs)
+
+    def _plot_2d(self, x, y, plot_type, color, alpha, kwargs):
+        """Internal helper for 2D plotting with different styles (line, bar, scatter)."""
+        if plot_type == 'line':
+            self.ax.plot(x, y, color=color, linestyle=kwargs.get('line_style', '-'),
+                         marker=kwargs.get('marker_style', None),
+                         alpha=alpha, linewidth=kwargs.get('line_width', 1.5),
+                         label=kwargs.get('label'))
+        elif plot_type == 'bar':
+            self.ax.bar(x, y, color=color, alpha=alpha, label=kwargs.get('label'))
+        elif plot_type == 'scatter':
+            self.ax.scatter(x, y, color=color, marker=kwargs.get('marker_style', 'o'),
+                            alpha=alpha, label=kwargs.get('label'))
+
+    def _plot_3d(self, x, y, z, plot_type, color, alpha, kwargs):
+        """Internal helper for 3D plotting with line, scatter, or surface plots."""
+        if plot_type == 'scatter':
+            self.ax.scatter(x, y, z, marker=kwargs.get('marker_style', 'o'),
+                            color=color, alpha=alpha, label=kwargs.get('label'))
+        elif plot_type == 'line':
+            self.ax.plot(x, y, z, linestyle=kwargs.get('line_style', '-'),
+                         linewidth=kwargs.get('line_width', 1.5),
+                         color=color, alpha=alpha, label=kwargs.get('label'))
+        elif plot_type == 'surface':
+            surf = self.ax.plot_surface(x, y, z, cmap=kwargs.get('color_map', 'viridis'),
+                                        alpha=alpha, linewidth=0)
+            if kwargs.get('colorbar', True):
+                self.fig.colorbar(surf)
 
     def update_data(self, plot_object, x, y, z=None):
+        """
+        Update an existing plot object's data points dynamically.
+        Useful for animations or real-time updates.
+        """
         from mpl_toolkits.mplot3d import Axes3D
         if isinstance(self.ax, Axes3D):
+            # If it's a 3D scatter, offsets3d can be updated directly
             if hasattr(plot_object, '_offsets3d'):
                 plot_object._offsets3d = (np.array(x), np.array(y), np.array(z))
             else:
+                # Otherwise, update data for line plots
                 plot_object.set_data(x, y)
                 plot_object.set_3d_properties(z)
         else:
+            # For 2D objects, either set_offsets for scatter or set_data for line
             if hasattr(plot_object, 'set_offsets'):
                 plot_object.set_offsets(np.column_stack([x, y]))
             else:
                 plot_object.set_data(x, y)
 
     def add_text(self, x, y, text, **kwargs):
+        """
+        Add text annotations to the plot, either in 2D or 3D.
+        Positions are given in Axes coordinates, not data coordinates.
+
+        Args:
+            x, y: float - Position to place the text in axes fraction
+            text: str - Text to display
+            **kwargs: Additional text formatting parameters
+        """
         text_id = kwargs.pop('text_id', None)
-        txt = self.ax.text2D(x, y, text, transform=self.ax.transAxes, **kwargs)
+        from mpl_toolkits.mplot3d import Axes3D
+        if isinstance(self.ax, Axes3D):
+            txt = self.ax.text2D(x, y, text, transform=self.ax.transAxes, **kwargs)
+        else:
+            txt = self.ax.text(x, y, text, transform=self.ax.transAxes, **kwargs)
+
         if text_id:
             self.ui_elements['text'][text_id] = txt
         return txt
 
     def add_button(self, position, label, callback, color='gray', text_color='white',
                    hover_color=None, button_id=None):
+        """
+        Add an interactive button to the plot figure.
+
+        Args:
+            position: (left, bottom, width, height) in figure coordinates
+            label: str - Button label text
+            callback: Function to call when button is clicked
+        """
         from matplotlib.widgets import Button
         ax_button = plt.axes(position)
         hover_color = hover_color or self._adjust_color_brightness(color, 1.2)
@@ -236,6 +327,16 @@ class PlottingToolkit:
 
     def add_slider(self, position, label, valmin, valmax, valinit=None,
                    callback=None, color='gray', text_color='white', slider_id=None):
+        """
+        Add a slider UI element to control parameters interactively.
+
+        Args:
+            position: (left, bottom, width, height) for slider axes
+            label: Slider label text
+            valmin, valmax: Range for slider
+            valinit: Initial slider value
+            callback: Optional function to call on slider value change
+        """
         from matplotlib.widgets import Slider
         ax_slider = plt.axes(position)
         valinit = valinit if valinit is not None else valmin
@@ -252,10 +353,19 @@ class PlottingToolkit:
 
     def add_radio_buttons(self, position, labels, callback=None, active=0,
                           color='gray', text_color='white', active_color='lightblue', radio_id=None):
+        """
+        Add a group of radio buttons for selecting one of several options.
+
+        Args:
+            position: (left, bottom, width, height) for radio box
+            labels: List of label strings for each radio button
+            callback: Function to call when a radio button is selected
+        """
         from matplotlib.widgets import RadioButtons
         ax_radio = plt.axes(position)
         radio = RadioButtons(ax_radio, labels, active=active, activecolor=active_color)
 
+        # Customize appearance of radio buttons and their labels
         if hasattr(radio, 'circles'):
             for circle in radio.circles:
                 circle.set_facecolor('none')
@@ -277,6 +387,10 @@ class PlottingToolkit:
 
     def add_labeled_section(self, title_position, title, description=None,
                             text_color='white', title_size=10, desc_size=8):
+        """
+        Add a titled section to the plot, possibly with a subtitle or description.
+        Useful for grouping UI elements on the figure.
+        """
         texts = {}
         texts['title'] = self.add_text(
             title_position[0], title_position[1],
@@ -297,6 +411,7 @@ class PlottingToolkit:
         return texts
 
     def _adjust_color_brightness(self, color, factor):
+        """Utility to lighten or darken a given color by a factor."""
         import matplotlib.colors as mcolors
         try:
             rgb = mcolors.to_rgb(color)
@@ -306,12 +421,17 @@ class PlottingToolkit:
             return color
 
     def update_ui_theme(self, dark_mode=True):
+        """
+        Update the plot theme between dark and light mode, adjusting colors
+        of all UI elements and text accordingly.
+        """
         self.dark_mode = dark_mode
         self.current_theme = 'dark' if dark_mode else 'light'
         background = 'black' if dark_mode else 'white'
         text_color = 'white' if dark_mode else 'black'
         btn_color = 'gray' if dark_mode else 'lightgray'
 
+        # Update figure and axes background and text colors
         if self.fig and self.ax:
             self.fig.set_facecolor(background)
             self.ax.set_facecolor(background)
@@ -324,6 +444,7 @@ class PlottingToolkit:
                 self.ax.zaxis.label.set_color(text_color)
             self.ax.grid(self.config.get('show_grid', True), alpha=0.3)
 
+        # Update button, slider, and radio button colors
         for button_info in self.ui_elements['buttons'].values():
             button = button_info['object']
             button.color = btn_color
@@ -350,6 +471,7 @@ class PlottingToolkit:
             self.fig.canvas.draw_idle()
 
     def clear_ui(self):
+        """Remove all UI elements (buttons, sliders, text) from the current figure."""
         for element_type in self.ui_elements:
             for element_info in self.ui_elements[element_type].values():
                 if hasattr(element_info['object'], 'ax'):
@@ -357,6 +479,7 @@ class PlottingToolkit:
         self.ui_elements = {key: {} for key in self.ui_elements}
 
     def remove_element(self, element_type, element_id):
+        """Remove a specific UI element by its type and ID."""
         if element_id in self.ui_elements[element_type]:
             element = self.ui_elements[element_type][element_id]
             if hasattr(element['object'], 'ax'):
@@ -364,6 +487,7 @@ class PlottingToolkit:
             del self.ui_elements[element_type][element_id]
 
     def update_view(self, camera):
+        """Update the 3D view (camera angles and distance) of the plot."""
         from mpl_toolkits.mplot3d import Axes3D
         if isinstance(self.ax, Axes3D):
             self.ax.view_init(elev=camera['elevation'], azim=camera['azimuth'])
@@ -372,18 +496,21 @@ class PlottingToolkit:
                 self.fig.canvas.draw_idle()
 
     def show(self):
+        """Display the figure window."""
         if self.fig is not None:
             plt.show()
             self.fig = None
             self.ax = None
 
     def clear(self):
+        """Close the current figure window and clear the axes."""
         if self.fig is not None:
             plt.close(self.fig)
             self.fig = None
             self.ax = None
 
     def update_text(self, text_id, new_text):
+        """Update the text of a previously created text element."""
         text_obj = self.ui_elements['text'].get(text_id, None)
         if text_obj:
             text_obj.set_text(new_text)
@@ -391,6 +518,10 @@ class PlottingToolkit:
                 self.fig.canvas.draw_idle()
 
     def update_plot_bounds(self, x_range, y_range, z_range=None):
+        """
+        Set new axis limits for the plot, ensuring ranges are not zero-width.
+        Works for both 2D and 3D plots.
+        """
         from mpl_toolkits.mplot3d import Axes3D
         if self.ax is not None:
             def safe_range(rng):
@@ -410,11 +541,16 @@ class PlottingToolkit:
                 self.fig.canvas.draw_idle()
 
     def setup_core_controls(self, callbacks):
+        # This method can be extended to setup default UI controls.
         pass
 
 
 @dataclass
 class SimulationParameters:
+    """
+    Dataclass for storing simulation parameters like number of segments,
+    spring constant, mass, time step, integration method, and initial conditions.
+    """
     num_segments: int = 25
     spring_constant: float = 1000.0
     mass: float = 0.01
@@ -427,6 +563,12 @@ class SimulationParameters:
 
 
 class ForceHandler:
+    """
+    Handles applying and managing external forces to the simulation objects.
+    Supports different force types (single mass, sinusoidal, Gaussian profile),
+    as well as continuous or time-limited forces.
+    """
+
     def __init__(self, physics, objects, dark_mode=True):
         self.physics = physics
         self.objects = objects
@@ -434,17 +576,23 @@ class ForceHandler:
         self.active = False
         self.continuous = False
         self.duration = 0.01
-        self.duration_remaining = 0.01  # Initialize to match duration
+        self.duration_remaining = 0.01
         self.amplitude = 10.0
         self.selected_object = len(objects) // 2
 
+        # Default width for the Gaussian
+        self.gaussian_width = len(self.objects) / 8.0
+
+        # Different force profiles, now referencing self.gaussian_width
         self.types = {
             'Single Mass': lambda t, x: np.array([0.0, 0.0, 1.0]),
             'Sinusoidal': lambda t, x: np.array([0.0, 0.0, np.sin(2 * np.pi * t)]),
             'Gaussian': lambda t, x: np.array(
-                [0.0, 0.0, np.exp(-(x - len(self.objects) // 2) ** 2 / (len(self.objects) / 8) ** 2)]
+                [0.0, 0.0, np.exp(-(x - len(self.objects) // 2) ** 2 / self.gaussian_width ** 2)]
             )
         }
+
+        # Force directions
         self.directions = {
             'Up/Down (Z)': np.array([0.0, 0.0, 1.0]),
             'Left/Right (X)': np.array([1.0, 0.0, 0.0]),
@@ -454,7 +602,10 @@ class ForceHandler:
         self.selected_direction = 'Up/Down (Z)'
 
     def check_duration(self, iterations_per_frame):
-        """Enhanced duration checking with proper time tracking."""
+        """
+        Check if the force duration has expired if it's not continuous.
+        Deactivates force if time runs out.
+        """
         if not self.continuous and self.active:
             time_elapsed = self.physics.dt * iterations_per_frame
             self.duration_remaining = max(0.0, self.duration_remaining - time_elapsed)
@@ -465,7 +616,10 @@ class ForceHandler:
         return False
 
     def toggle(self):
-        """Enhanced toggle with proper duration management."""
+        """
+        Toggle the force on or off. If continuous, remains locked on.
+        If not continuous, reset duration and activate/deactivate accordingly.
+        """
         if self.active:
             self.deactivate()
             return ('Apply Force', 'darkgray')
@@ -474,12 +628,15 @@ class ForceHandler:
             return ('Force Locked', 'red')
         else:
             self.active = True
-            # Reset remaining duration to full duration when activating
             self.duration_remaining = self.duration
             self.apply(self.duration)
             return ('Force Active', 'lightgreen')
 
     def apply(self, duration=None):
+        """
+        Apply the currently selected force type and direction to the chosen object(s).
+        Uses self.gaussian_width for the Gaussian type.
+        """
         direction = self.directions[self.selected_direction]
         if self.selected_type == 'Single Mass':
             force = direction * self.amplitude
@@ -488,19 +645,27 @@ class ForceHandler:
             magnitude = np.sin(2 * np.pi * self.physics.time) * self.amplitude
             self.physics.apply_force(self.selected_object, direction * magnitude, duration)
         elif self.selected_type == 'Gaussian':
+            # Apply Gaussian force pattern across all non-pinned nodes
             for i in range(1, len(self.objects) - 1):
-                magnitude = np.exp(-(i - self.selected_object) ** 2 / (len(self.objects) / 8) ** 2) * self.amplitude
+                magnitude = np.exp(-(i - self.selected_object) ** 2 / self.gaussian_width ** 2) * self.amplitude
                 self.physics.apply_force(i, direction * magnitude, duration)
 
+
     def deactivate(self):
-        """Enhanced deactivation with duration reset."""
+        """
+        Deactivate the force, resetting duration_remaining and clearing forces from all objects.
+        """
         self.active = False
-        # Reset remaining duration to match slider value
         self.duration_remaining = self.duration
         for obj_id in range(len(self.objects)):
             self.physics.clear_force(obj_id)
 
+
 class StringSimulationSetup:
+    """
+    A GUI class that allows users to configure simulation parameters before starting the simulation.
+    Provides fields for number of segments, spring constant, mass, dt, and force magnitude, and integrates chosen settings.
+    """
     def __init__(self, main_root):
         self.main_root = main_root
         self.root = tk.Toplevel(main_root)
@@ -508,6 +673,7 @@ class StringSimulationSetup:
         self.default_params = SimulationParameters()
         self.init_variables()
         self.root.minsize(600, 500)
+        # Position window at a reasonable location on screen
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         window_width = int(screen_width * 0.4)
@@ -523,6 +689,7 @@ class StringSimulationSetup:
         self.simulation_params = None
 
     def init_variables(self):
+        """Initialize tkinter variables for each parameter the user can adjust."""
         self.num_segments_var = tk.IntVar(self.root)
         self.num_segments_var.set(self.default_params.num_segments)
         self.spring_constant_var = tk.DoubleVar(self.root)
@@ -541,6 +708,7 @@ class StringSimulationSetup:
         self.simulation_params = None
 
     def create_responsive_styles(self):
+        """Create ttk styles that adjust with window resize."""
         style = ttk.Style()
         self.base_header_size = 14
         self.base_text_size = 10
@@ -550,6 +718,7 @@ class StringSimulationSetup:
         style.configure("Setup.TButton", font=("Arial", self.base_button_size), padding=10)
 
     def on_window_resize(self, event):
+        """Dynamically scale fonts and padding as the window resizes."""
         if event.widget == self.root:
             width_scale = event.width / (self.root.winfo_screenwidth() * 0.4)
             height_scale = event.height / (self.root.winfo_screenheight() * 0.6)
@@ -563,6 +732,7 @@ class StringSimulationSetup:
             style.configure("Setup.TButton", padding=scaled_padding)
 
     def setup_gui(self):
+        """Build the main GUI with tabs for basic and advanced parameters."""
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(sticky="nsew")
         header_frame = ttk.Frame(main_frame)
@@ -576,10 +746,12 @@ class StringSimulationSetup:
         notebook = ttk.Notebook(main_frame)
         notebook.grid(row=1, column=0, sticky="nsew", pady=5)
 
+        # Basic parameters tab
         basic_frame = ttk.Frame(notebook, padding="10")
         notebook.add(basic_frame, text="Basic Parameters")
         self.setup_basic_parameters(basic_frame)
 
+        # Advanced parameters tab
         advanced_frame = ttk.Frame(notebook, padding="10")
         notebook.add(advanced_frame, text="Advanced Parameters")
         self.setup_advanced_parameters(advanced_frame)
@@ -598,6 +770,7 @@ class StringSimulationSetup:
         main_frame.grid_columnconfigure(0, weight=1)
 
     def setup_basic_parameters(self, parent):
+        """UI elements for basic string properties: number of segments, k, mass, and display settings."""
         props_frame = ttk.LabelFrame(parent, text="String Properties", padding="10")
         props_frame.pack(fill="x", padx=5, pady=5)
         ttk.Label(props_frame, text="Number of segments:").grid(row=0, column=0, padx=5, pady=5)
@@ -616,6 +789,7 @@ class StringSimulationSetup:
         ).pack(padx=5, pady=5)
 
     def setup_advanced_parameters(self, parent):
+        """UI elements for force magnitude, integration method, and time step settings."""
         force_frame = ttk.LabelFrame(parent, text="Force Settings", padding="10")
         force_frame.pack(fill="x", padx=5, pady=5)
         ttk.Label(force_frame, text="Force magnitude (N):").grid(row=0, column=0, padx=5, pady=5)
@@ -663,56 +837,11 @@ class StringSimulationSetup:
             foreground="gray"
         ).pack(pady=2)
 
-    def set_simulation_speed(self, val):
-        self.iteration_count = int(val)
-
-    def toggle_pause(self, event):
-        self.paused = not self.paused
-        self.play_button.label.set_text('Resume' if self.paused else 'Pause')
-        self.fig.canvas.draw_idle()
-
-    def reset_simulation(self, event):
-        self.paused = True
-        self.play_button.label.set_text('Start')
-        self.physics.time = self.initial_physics_time
-        for i, obj in enumerate(self.objects):
-            obj.position = self.original_positions[i].copy()
-            obj.velocity = self.original_velocities[i].copy()
-            obj.acceleration = np.zeros(3)
-        self.physics.data_recorder.clear_history()
-        self.update_plots()
-        self.fig.canvas.draw_idle()
-
-    def save_simulation_data(self, event):
-        if not self.paused:
-            self.toggle_pause(None)
-            self.play_button.label.set_text('Resume')
-            self.fig.canvas.draw_idle()
-
-        root = tk.Tk()
-        root.withdraw()
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            title="Save Simulation Data"
-        )
-
-        if file_path:
-            try:
-                self.physics.data_recorder.save_to_csv(file_path)
-                messagebox.showinfo(
-                    "Success",
-                    f"Simulation data saved to:\n{file_path}"
-                )
-            except Exception as e:
-                messagebox.showerror(
-                    "Error",
-                    f"Failed to save data: {str(e)}"
-                )
-
-        root.destroy()
+    # Methods like set_simulation_speed, toggle_pause, reset_simulation, etc. are utility methods called from visualization/UI
+    # They handle updating simulation parameters and UI state.
 
     def validate_parameters(self):
+        """Check that all user-entered parameters are valid."""
         try:
             num_segments = self.num_segments_var.get()
             if num_segments < 2:
@@ -740,9 +869,11 @@ class StringSimulationSetup:
             return False
 
     def get_parameters(self):
+        """Assemble and return a SimulationParameters object from user input."""
         if not hasattr(self, 'simulation_params'):
             return None
         try:
+            # Re-validate before returning parameters
             if self.num_segments_var.get() < 2:
                 raise ValueError("Number of segments must be at least 2")
             if self.spring_constant_var.get() <= 0:
@@ -763,7 +894,6 @@ class StringSimulationSetup:
                 applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
                 dark_mode=self.dark_mode_var.get()
             )
-
             return params
 
         except Exception as e:
@@ -771,6 +901,10 @@ class StringSimulationSetup:
             return None
 
     def start_simulation(self):
+        """
+        Validate parameters and if correct, close the setup window and pass parameters back.
+        If invalid, show an error. If valid, store them and exit.
+        """
         if not self.validate_parameters():
             return
         self.simulation_params = SimulationParameters(
@@ -787,8 +921,11 @@ class StringSimulationSetup:
 
 
 class SimulationVisualizer:
-    """Main visualization class handling display and interaction."""
-
+    """
+    This class manages the live simulation visualization, handling the main matplotlib figure,
+    camera controls, UI elements like start/pause/reset, and shows forces and camera info.
+    It integrates with the physics model and objects, updating their states and the display each frame.
+    """
     def __init__(self, physics_model, objects: List, dark_mode: bool = True, integration_method: str = 'leapfrog'):
         self.physics = physics_model
         self.objects = objects
@@ -801,12 +938,13 @@ class SimulationVisualizer:
         self.original_velocities = [obj.velocity.copy() for obj in objects]
         self.initial_physics_time = physics_model.time
 
-        # Initialize force handler
+        # Initialize force handling
         self.force_handler = ForceHandler(physics_model, objects, dark_mode)
 
-        # Initialize plotter before setup_visualization
+        # Setup plotting toolkit for UI and visualization
         self.plotter = PlottingToolkit()
 
+        # Camera and rendering settings
         self.camera = {
             'distance': 2.0,
             'azimuth': 45,
@@ -831,12 +969,12 @@ class SimulationVisualizer:
         self.setup_visualization()
 
     def setup_visualization(self):
+        """Initialize figure, axes, initial plots, camera settings, and UI controls for the simulation."""
         plt.style.use('dark_background' if self.dark_mode else 'default')
         self.fig = plt.figure(figsize=(12, 10))
         self.ax = self.fig.add_subplot(111, projection='3d')
         self.ax.set_position([0.20, 0.15, 0.6, 0.8])
 
-        # Assign fig and ax to the plotter so it can create UI elements
         self.plotter.fig = self.fig
         self.plotter.ax = self.ax
 
@@ -846,7 +984,7 @@ class SimulationVisualizer:
         self._connect_events()
 
         text_color = 'white' if self.dark_mode else 'black'
-        # Create force_info and camera_info texts and register them in plotter's ui_elements:
+        # Add text elements to display force info and camera info
         self.force_info_text = self.ax.text2D(
             1.15, 0.55,
             '',
@@ -868,6 +1006,7 @@ class SimulationVisualizer:
         self.plotter.ui_elements['text']['camera_info'] = self.camera_info_text
 
     def setup_plots(self):
+        """Create scatter and line objects for each mass and the spring lines between them."""
         for i, obj in enumerate(self.objects):
             scatter = self.ax.scatter(
                 [], [], [],
@@ -892,6 +1031,7 @@ class SimulationVisualizer:
         )
 
     def setup_camera(self):
+        """Configure camera distance and axes limits based on object positions."""
         if self.objects:
             positions = np.array([obj.position for obj in self.objects])
             max_dist = np.max(np.abs(positions))
@@ -914,9 +1054,11 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def setup_controls(self):
+        # Placeholder if we add more default controls
         pass
 
     def setup_enhanced_controls(self):
+        """Set up UI elements like buttons, sliders, and radio buttons for simulation control and force manipulation."""
         btn_color = 'darkgray' if not self.dark_mode else 'gray'
         text_color = 'white' if self.dark_mode else 'black'
 
@@ -930,6 +1072,7 @@ class SimulationVisualizer:
         left_panel_start = 0.07
         panel_width = 0.12
 
+        # Slider for simulation speed (# steps per frame)
         self.speed_slider = Slider(
             plt.axes([0.24, 0.02, 0.44, 0.02]),
             'Simulation Speed',
@@ -939,6 +1082,7 @@ class SimulationVisualizer:
         )
         self.speed_slider.on_changed(self.set_simulation_speed)
 
+        # Create and place multiple buttons for play/pause, reset, view cycles, zoom, theme, and saving data
         button_configs = [
             ('play_button', 'Pause', 0.24),
             ('reset_button', 'Reset', 0.35),
@@ -952,6 +1096,7 @@ class SimulationVisualizer:
             btn = Button(plt.axes([x_pos, 0.06, 0.1, 0.04]), label, color=btn_color)
             setattr(self, btn_name, btn)
 
+        # Assign button callbacks
         self.play_button.on_clicked(self.toggle_pause)
         self.reset_button.on_clicked(self.reset_simulation)
         self.view_button.on_clicked(self.cycle_view)
@@ -959,14 +1104,17 @@ class SimulationVisualizer:
         self.theme_button.on_clicked(self.toggle_theme)
         self.save_button.on_clicked(self.save_simulation_data)
 
+        # Force controls section
         self.fig.text(left_panel_start, 0.9, 'Force Controls', color=text_color, fontsize=10)
 
+        # Radio buttons for selecting force type
         self.force_radio = RadioButtons(
             plt.axes([left_panel_start, 0.72, panel_width, 0.15]),
             list(self.force_handler.types.keys())
         )
         self.force_radio.on_clicked(self.set_force_type)
 
+        # Radio buttons for selecting force direction
         self.fig.text(left_panel_start, 0.65, 'Direction:', color=text_color, fontsize=10)
         self.direction_radio = RadioButtons(
             plt.axes([left_panel_start, 0.47, panel_width, 0.15]),
@@ -974,6 +1122,7 @@ class SimulationVisualizer:
         )
         self.direction_radio.on_clicked(self.set_force_direction)
 
+        # Slider for selecting which object to apply force to
         self.object_slider = Slider(
             plt.axes([left_panel_start, 0.40, panel_width, 0.02]),
             'Object',
@@ -983,6 +1132,7 @@ class SimulationVisualizer:
         )
         self.object_slider.on_changed(self.set_selected_object)
 
+        # Slider for force amplitude
         self.amplitude_slider = Slider(
             plt.axes([left_panel_start, 0.35, panel_width, 0.02]),
             'Amplitude',
@@ -991,6 +1141,7 @@ class SimulationVisualizer:
         )
         self.amplitude_slider.on_changed(self.set_force_amplitude)
 
+        # Slider for force duration
         self.duration_slider = Slider(
             plt.axes([left_panel_start, 0.30, panel_width, 0.02]),
             'Duration',
@@ -1001,6 +1152,17 @@ class SimulationVisualizer:
         self.duration_slider.on_changed(self.set_force_duration)
         self.duration_slider.on_changed(self.set_force_duration_remaining)
 
+        # Add a new slider for Gaussian width
+        self.gaussian_width_slider = Slider(
+            plt.axes([left_panel_start+0.02, 0.25, panel_width-0.02, 0.02]),
+            'Gaussian Width',
+            0.1, len(self.objects) / 2.0,
+            valinit=self.force_handler.gaussian_width,
+            valfmt='%.2f'
+        )
+        self.gaussian_width_slider.on_changed(self.set_gaussian_width)
+
+        # Buttons to apply force and toggle continuous force mode
         self.force_button = Button(
             plt.axes([left_panel_start, 0.20, panel_width, 0.04]),
             'Apply Force',
@@ -1016,17 +1178,20 @@ class SimulationVisualizer:
         self.continuous_force_button.on_clicked(self.toggle_continuous_force)
 
     def return_to_setup(self, event):
+        """Close current figure and return to the setup menu, indicating a restart."""
         self.should_restart = True
         plt.close(self.fig)
         if self.main_root:
             self.main_root.deiconify()
 
     def _connect_events(self):
+        """Connect mouse and scroll events for rotating/panning/zooming the 3D view."""
         self.fig.canvas.mpl_connect('button_press_event', self.on_mouse_press)
         self.fig.canvas.mpl_connect('button_release_event', self.on_mouse_release)
         self.fig.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
         self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
 
+    # The mouse/scroll events handle camera rotation and zoom
     def on_mouse_press(self, event):
         if event.inaxes == self.ax:
             if event.button == 1:
@@ -1063,6 +1228,10 @@ class SimulationVisualizer:
             self.update_camera()
 
     def update_frame(self, frame):
+        """
+        Update the simulation state each animation frame, record data,
+        apply forces if active, and update the displayed plots and info.
+        """
         if not self.paused and self.simulation_started:
             self.animation_frame_count += 1
 
@@ -1079,14 +1248,30 @@ class SimulationVisualizer:
                     self.fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
                 self.last_frame_time = current_time
 
+            # For each frame, run multiple simulation steps
             for _ in range(self.iteration_count):
+                positions = np.array([obj.position for obj in self.objects])
+                velocities = np.array([obj.velocity for obj in self.objects])
+                accelerations = np.array([obj.acceleration for obj in self.objects])
+
+                # Record the current state
+                self.physics.data_recorder.record_step(
+                    self.physics.time,
+                    positions,
+                    velocities,
+                    accelerations
+                )
+
+                # Integrate one step
                 self.physics.step(self.integration_method)
 
+            # Check if the force duration ended
             if self.force_handler.check_duration(self.iteration_count):
                 self.force_button.label.set_text('Apply Force')
                 self.force_button.color = 'darkgray' if not self.dark_mode else 'gray'
                 self.fig.canvas.draw_idle()
 
+            # If continuous force is active, apply it every frame
             if self.force_handler.continuous and self.force_handler.active:
                 self.force_handler.apply()
 
@@ -1094,10 +1279,10 @@ class SimulationVisualizer:
         self.update_info()
         self.highlight_selected_object()
 
-        # Return no blit artists because 3D + blit is problematic
         return []
 
     def update_plots(self):
+        """Refresh the position of scatter points and lines connecting them."""
         for i, obj in enumerate(self.objects):
             self.plots[i]['scatter']._offsets3d = ([obj.position[0]], [obj.position[1]], [obj.position[2]])
             if i < len(self.objects) - 1:
@@ -1110,27 +1295,25 @@ class SimulationVisualizer:
 
     def update_info(self):
         """
-        Updates the information display with current simulation status.
-        Uses the physics engine's actual time instead of the data recorder.
+        Update text display showing simulation state: paused/running,
+        FPS, time, integration method, dt, and force duration info.
         """
-        # Get the current simulation time directly from the physics engine
-        # Only show time progression when simulation is actually running
         current_time = self.physics.time if self.simulation_started else 0.0
         dt_per_frame = self.physics.dt * self.iteration_count
         state = 'PAUSED' if self.paused else 'RUNNING'
 
-        # Format force duration information
         if self.force_handler.active:
             duration_text = f"{self.force_handler.duration_remaining:.2f}s remaining"
+        elif self.force_handler.continuous:
+            duration_text = f"Continuous"
         else:
             duration_text = f"Duration set to {self.force_handler.duration:.2f}s"
 
-        # Create comprehensive status display
         info_text = (
             f"{state}\n"
             f"Frame: {self.animation_frame_count}\n"
             f"FPS: {min(self.fps, 60.0):.1f}\n"
-            f"Time: {current_time:.3f}s\n"  
+            f"Time: {current_time:.3f}s\n"
             f"Integration: {self.integration_method.title()}\n"
             f"dt/step: {self.physics.dt:.6f}s\n"
             f"dt/frame: {dt_per_frame:.6f}s\n"
@@ -1141,11 +1324,10 @@ class SimulationVisualizer:
         self.update_force_info()
 
     def update_force_info(self):
-        # Retrieve forces from the physics model for the selected object
+        """Update the text box that shows the detailed external, spring, and total forces on the selected mass."""
         external_force, spring_forces, total_force = self.physics.get_forces_on_object(
             self.force_handler.selected_object)
 
-        # Format force information as requested
         force_text = (
             f"Forces on Mass {self.force_handler.selected_object}:\n"
             f"─────────────────────────\n"
@@ -1165,6 +1347,7 @@ class SimulationVisualizer:
         self.plotter.update_text('force_info', force_text)
 
     def update_camera_info(self):
+        """Update a text element with current camera angles and distance."""
         text = (
             f"Camera Azim: {self.camera['azimuth']:.1f}\n"
             f"Camera Elev: {self.camera['elevation']:.1f}\n"
@@ -1173,6 +1356,7 @@ class SimulationVisualizer:
         self.plotter.update_text('camera_info', text)
 
     def highlight_selected_object(self):
+        """Visually highlight the currently selected object for force application."""
         for i, obj in enumerate(self.objects):
             scatter = self.plots[i]['scatter']
             if i == self.force_handler.selected_object:
@@ -1186,36 +1370,54 @@ class SimulationVisualizer:
                 scatter._sizes = [50]
 
     def animate(self):
+        """Start the matplotlib animation loop."""
         self.anim = FuncAnimation(
             self.fig,
             self.update_frame,
             interval=20,
-            blit=False,  # Disable blit for proper 3D and text updates
+            blit=False,
             cache_frame_data=False
         )
         plt.show()
         return self.should_restart
 
+    # Methods to handle UI callbacks:
     def set_simulation_speed(self, val):
         self.iteration_count = int(float(val))
         self.update_info()
 
     def toggle_pause(self, event):
+        """
+        Pause/resume simulation and start simulation if it hasn't started yet.
+        On resume from idle, record the initial state for data logging.
+        """
         if not self.simulation_started and not self.paused:
             return
+
         self.paused = not self.paused
+
         if not self.paused and not self.simulation_started:
             self.simulation_started = True
             self.physics.start_simulation()
+            # Record initial state
+            positions = np.array([obj.position for obj in self.objects])
+            velocities = np.array([obj.velocity for obj in self.objects])
+            accelerations = np.array([obj.acceleration for obj in self.objects])
+            self.physics.data_recorder.record_step(
+                self.physics.time,
+                positions,
+                velocities,
+                accelerations
+            )
+
         button_text = 'Start' if not self.simulation_started else ('Resume' if self.paused else 'Pause')
         self.play_button.label.set_text(button_text)
         self.fig.canvas.draw_idle()
 
     def reset_simulation(self, event):
         """
-        Enhanced reset that properly handles time reset.
+        Reset simulation to initial conditions, clear data, and set paused state.
         """
-        # Reset animation counters
         self.animation_frame_count = 0
         self.fps = 0
         self.frame_times.clear()
@@ -1223,32 +1425,29 @@ class SimulationVisualizer:
         self.simulation_started = False
         self.paused = True
 
-        # Update UI elements
         self.play_button.label.set_text('Start')
 
-        # Reset physics engine state
-        self.physics.time = self.initial_physics_time  # Reset to initial time
+        self.physics.time = self.initial_physics_time
         self.physics.simulation_started = False
         self.force_handler.deactivate()
 
-        # Reset object positions and velocities
         for i, obj in enumerate(self.objects):
             obj.position = self.original_positions[i].copy()
             obj.velocity = self.original_velocities[i].copy()
             obj.acceleration = np.zeros(3)
 
-        # Reset force UI
         self.force_button.label.set_text('Apply Force')
 
-        # Clear recorded data
         self.physics.data_recorder.clear_history()
 
-        # Update display
         self.update_plots()
         self.update_info()
         self.fig.canvas.draw_idle()
 
     def save_simulation_data(self, event):
+        """
+        Save current simulation data to a CSV file. If simulation is running, pause it first.
+        """
         if not self.paused:
             self.toggle_pause(None)
             self.play_button.label.set_text('Resume')
@@ -1278,8 +1477,10 @@ class SimulationVisualizer:
         root.destroy()
 
     def toggle_force(self, event):
-        """Enhanced force toggle with proper duration management."""
-        # Start simulation if not already started
+        """
+        Toggle the application of forces to the string. If simulation not started yet,
+        start it now. Handle updating force button label and color.
+        """
         if not self.simulation_started and not self.force_handler.active:
             self.simulation_started = True
             self.physics.start_simulation()
@@ -1295,18 +1496,17 @@ class SimulationVisualizer:
                     cache_frame_data=False
                 )
 
-        # Toggle force state with updated duration handling
         result = self.force_handler.toggle()
         if result:
             label, color = result
             self.force_button.label.set_text(label)
             self.force_button.color = color
-            # Reset remaining duration to slider value when force is deactivated
             if not self.force_handler.active:
                 self.force_handler.duration_remaining = self.force_handler.duration
             self.fig.canvas.draw_idle()
 
     def toggle_continuous_force(self, event):
+        """Toggle continuous force mode on or off and update UI accordingly."""
         self.force_handler.continuous = not self.force_handler.continuous
         if self.force_handler.continuous:
             self.continuous_force_button.label.set_text('Continuous: On')
@@ -1320,36 +1520,50 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def set_force_type(self, label):
+        """Change the currently selected force type based on user radio button selection."""
         self.force_handler.selected_type = label
 
     def set_force_direction(self, label):
+        """Change the force direction based on user selection."""
         self.force_handler.selected_direction = label
 
     def set_selected_object(self, val):
+        """Change which object/mass is selected for force application."""
         self.force_handler.selected_object = int(float(val))
         self.highlight_selected_object()
         self.fig.canvas.draw_idle()
 
     def set_force_amplitude(self, val):
+        """Update force amplitude from slider input."""
         self.force_handler.amplitude = float(val)
         self.update_info()
         self.fig.canvas.draw_idle()
 
     def set_force_duration(self, val):
-        """Updates both the base duration and remaining duration when slider changes."""
+        """Update the base force duration and reset duration_remaining if force inactive."""
         self.force_handler.duration = float(val)
-        # Only update remaining duration if force is not currently active
         if not self.force_handler.active:
             self.force_handler.duration_remaining = float(val)
         self.update_info()
         self.fig.canvas.draw_idle()
 
     def set_force_duration_remaining(self, val):
+        """Adjust duration_remaining if desired (typically not necessary unless fine-tuning)."""
         self.force_handler.duration_remaining = float(val)
         self.update_info()
         self.fig.canvas.draw_idle()
 
+    def set_gaussian_width(self, val):
+        """
+        Callback to update the Gaussian width in the force handler when the slider changes.
+        """
+        self.force_handler.gaussian_width = float(val)
+        self.update_info()
+        if self.fig:
+            self.fig.canvas.draw_idle()
+
     def cycle_view(self, event):
+        """Cycle through predefined camera views."""
         views = [
             ("Default", 45, 15),
             ("Top", 0, 90),
@@ -1374,6 +1588,7 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def cycle_zoom(self, event):
+        """Cycle through predefined zoom levels (Fit, Close, Medium, Far)."""
         zoom_levels = {
             "Fit": self.calculate_fit_distance(),
             "Close": 1.0,
@@ -1392,6 +1607,7 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def calculate_fit_distance(self):
+        """Calculate a camera distance that fits all objects comfortably in view."""
         if not self.objects:
             return 2.0
         positions = np.array([obj.position for obj in self.objects])
@@ -1399,6 +1615,7 @@ class SimulationVisualizer:
         return max_dist * 2.0
 
     def update_camera(self):
+        """Update camera based on self.camera settings."""
         self.ax.view_init(
             elev=self.camera['elevation'],
             azim=self.camera['azimuth']
@@ -1414,68 +1631,157 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def toggle_theme(self, event):
+        """Toggle between dark and light theme for the figure and all UI elements."""
         self.dark_mode = not self.dark_mode
-        self.plotter.update_ui_theme(self.dark_mode)
+        text_color = 'white' if self.dark_mode else 'black'
+        background_color = 'black' if self.dark_mode else 'white'
+        button_color = 'gray' if self.dark_mode else 'lightgray'
+
+        # Update figure and axes background and text colors
+        self.fig.set_facecolor(background_color)
+        self.ax.set_facecolor(background_color)
+
+        for spine in self.ax.spines.values():
+            spine.set_color(text_color)
+        self.ax.tick_params(colors=text_color)
+        self.ax.xaxis.label.set_color(text_color)
+        self.ax.yaxis.label.set_color(text_color)
+        self.ax.zaxis.label.set_color(text_color)
+        self.ax.title.set_color(text_color)
+
+        self.ax.grid(True, alpha=0.3, color=text_color)
+
+        # Update info texts
+        self.info_text.set_color(text_color)
+        self.force_info_text.set_color(text_color)
+        self.camera_info_text.set_color(text_color)
+
+        # Update buttons and sliders
+        buttons = [
+            self.setup_button,
+            self.play_button,
+            self.reset_button,
+            self.view_button,
+            self.zoom_button,
+            self.theme_button,
+            self.save_button,
+            self.force_button,
+            self.continuous_force_button
+        ]
+
+        for button in buttons:
+            button.color = button_color
+            button.hovercolor = self.plotter._adjust_color_brightness(button_color, 1.2)
+            button.label.set_color(text_color)
+
+        sliders = [
+            self.speed_slider,
+            self.object_slider,
+            self.amplitude_slider,
+            self.duration_slider
+        ]
+
+        for slider in sliders:
+            slider.label.set_color(text_color)
+            slider.valtext.set_color(text_color)
+            if hasattr(slider, 'poly'):
+                slider.poly.set_color(text_color)
+            if hasattr(slider, 'vline'):
+                slider.vline.set_color(text_color)
+            if hasattr(slider, 'hline'):
+                slider.hline.set_color(text_color)
+
+        # Update radio buttons
+        radios = [self.force_radio, self.direction_radio]
+        for radio in radios:
+            circles = getattr(radio, '_circles', getattr(radio, 'circles', []))
+            for circle in circles:
+                circle.set_edgecolor(text_color)
+            for label in radio.labels:
+                label.set_color(text_color)
+
         self.update_plots()
-        self.fig.canvas.draw_idle()
-        self.theme_button.label.set_text('Dark Mode' if not self.dark_mode else 'Light Mode')
         self.highlight_selected_object()
 
+        self.theme_button.label.set_text('Dark Mode' if not self.dark_mode else 'Light Mode')
+        self.fig.canvas.draw_idle()
 
 class AnalysisVisualizer:
     """
-    Interactive visualization system for analyzing string simulation data.
-    Uses the DataAnalysis functions without re-implementing logic that data_handling already provides.
+    The AnalysisVisualizer class provides a graphical user interface (GUI) for analyzing
+    previously recorded simulation data. It uses the DataAnalysis class to extract and
+    compute insights about the simulation results.
+
+    By loading multiple simulation CSV files, the user can compare different runs,
+    visualize their data, and perform various analyses without re-implementing the logic
+    that DataAnalysis already provides.
+
+    All plotting is done using the PlottingToolkit (referred to as `plotter`), which
+    provides figure and axes objects for plotting. Direct matplotlib calls are only made
+    through the `plotter`'s figure (`plotter.fig`) and axes (`plotter.ax`), or on figures/axes
+    created by `plotter.create_figure()`. This ensures all plotting is done through the
+    given toolkit.
     """
 
     def __init__(self, main_root):
-        self.analyzer = DataAnalysis()  # Data analysis engine
-        self.loaded_files = {}  # Maps file paths to their simulation data
-        self.main_root = main_root
-        self.root = tk.Toplevel(main_root)
-        self.root.title("String Simulation Analysis")
+        # Initialize the main analysis window with reference to the main_root.
+        # This window will allow users to load multiple simulation CSV files and
+        # perform various analyses on them.
+        self.main_root = main_root  # Store a reference to the main (root) window.
+        self.analyzer = DataAnalysis()  # Create a DataAnalysis instance for data handling.
+        self.loaded_files = {}  # Dictionary mapping file paths to loaded data references.
 
-        # Window dimensions
+        # Create a new window (Toplevel) for analysis separate from the main window.
+        self.root = tk.Toplevel(main_root)
+        self.root.title("String Simulation Analysis")  # Set the window title.
+
+        # Configure the window's size and position based on screen dimensions.
         window_width = int(self.root.winfo_screenwidth() * 0.55)
         window_height = int(self.root.winfo_screenheight() * 0.40)
         x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
         y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
-        # Color palette for visualization
+        # Define a color palette for line colors in multi-file plots.
         self.colors = ["red", "green", "blue", "yellow", "orange", "purple"]
 
+        # Build the main GUI layout, including file management and analysis buttons.
         self.setup_gui()
+
+        # Ensure proper handling of window close (returning to main window if needed).
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_gui(self):
+        # Create a main frame to hold all UI elements, add padding for aesthetics.
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky="nsew")
 
+        # Create a labeled frame for file management (loading, deleting CSV files).
         file_frame = ttk.LabelFrame(self.main_frame, text="File Management", padding="5")
         file_frame.grid(row=0, column=0, sticky="ew", pady=5)
 
+        # A frame for the file load and delete buttons.
         button_frame = ttk.Frame(file_frame)
         button_frame.grid(row=0, column=0, sticky="ew", padx=5)
         button_frame.columnconfigure(1, weight=1)
 
-        ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(
-            row=0, column=0, padx=5, sticky="w"
-        )
+        # Button to load CSV simulation files.
+        ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(row=0, column=0, padx=5, sticky="w")
 
+        # Frame for delete actions (to the right side of button_frame).
         delete_frame = ttk.Frame(button_frame)
         delete_frame.grid(row=0, column=2, sticky="e")
 
-        ttk.Button(delete_frame, text="Delete Selected", command=self.delete_selected).pack(
-            side="left", padx=5
-        )
-        ttk.Button(delete_frame, text="Clear All", command=self.clear_files).pack(
-            side="left", padx=5
-        )
+        # Button to delete selected files from the list.
+        ttk.Button(delete_frame, text="Delete Selected", command=self.delete_selected).pack(side="left", padx=5)
+        # Button to clear all loaded files.
+        ttk.Button(delete_frame, text="Clear All", command=self.clear_files).pack(side="left", padx=5)
 
+        # Treeview to display loaded files and summary information.
         self.file_tree = ttk.Treeview(file_frame, show="headings", height=3, selectmode="extended")
         self.file_tree.grid(row=1, column=0, sticky="ew", pady=5)
 
+        # Define columns for file display: filename, nodes, frames, simulation time, and color.
         self.file_tree["columns"] = ("filename", "nodes", "frames", "time", "color")
         columns = [
             ("filename", "Filename", 200, "w"),
@@ -1484,16 +1790,18 @@ class AnalysisVisualizer:
             ("time", "Simulation Time", 150, "center"),
             ("color", "Color", 100, "center")
         ]
-
         for col, heading, width, anchor in columns:
             self.file_tree.heading(col, text=heading)
             self.file_tree.column(col, width=width, anchor=anchor)
 
+        # Allow cycling the assigned color by double-clicking on the color column.
         self.file_tree.bind("<Double-1>", self.cycle_color)
 
+        # A labeled frame for analysis options and buttons to run various computations.
         analysis_frame = ttk.LabelFrame(self.main_frame, text="Analysis Options", padding="5")
         analysis_frame.grid(row=1, column=0, sticky="ew", pady=5)
 
+        # First row of analysis buttons:
         row1_buttons = [
             ("View Summary", self.show_summary),
             ("Find Stationary Nodes", self.compare_stationary),
@@ -1502,16 +1810,20 @@ class AnalysisVisualizer:
             ("Movement Patterns", self.compare_movement)
         ]
 
+        # Second row of analysis buttons (more advanced):
         row2_buttons = [
-            ("Harmonic Analysis", self.analyze_harmonics)
+            ("Harmonic Analysis", self.analyze_harmonics),
+            ("Frequency Analysis", self.analyze_frequencies)
         ]
 
+        # Place the first row of analysis buttons.
         for i, (text, command) in enumerate(row1_buttons):
             ttk.Button(analysis_frame, text=text, command=command).grid(
                 row=0, column=i, padx=5, pady=5, sticky="ew"
             )
             analysis_frame.columnconfigure(i, weight=1)
 
+        # Center the second row of buttons under the first row.
         start_col = (len(row1_buttons) - len(row2_buttons)) // 2
         for i, (text, command) in enumerate(row2_buttons):
             ttk.Button(analysis_frame, text=text, command=command).grid(
@@ -1519,10 +1831,12 @@ class AnalysisVisualizer:
             )
 
     def load_files(self):
+        # Open a file dialog to select CSV files.
         files = filedialog.askopenfilenames(
             title="Select Simulation Files",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
+        # Load each selected file into the analyzer and display it in the file tree.
         for file_path in files:
             try:
                 data = self.analyzer.load_simulation(file_path)
@@ -1540,6 +1854,7 @@ class AnalysisVisualizer:
                 messagebox.showerror("Error", f"Failed to load {file_path}:\n{str(e)}")
 
     def delete_selected(self):
+        # Delete the selected files from both the tree and memory.
         selected_items = self.file_tree.selection()
         if not selected_items:
             messagebox.showwarning("Warning", "Please select files to delete.")
@@ -1559,6 +1874,7 @@ class AnalysisVisualizer:
                 del self.loaded_files[file_path]
 
     def get_selected_files(self):
+        # Return a list of currently selected files; if none selected, return all.
         selected_items = self.file_tree.selection()
         if not selected_items:
             selected_items = self.file_tree.get_children()
@@ -1573,6 +1889,7 @@ class AnalysisVisualizer:
         return selected_files
 
     def cycle_color(self, event):
+        # On double-clicking the color column, cycle through the available colors.
         item = self.file_tree.identify_row(event.y)
         column = self.file_tree.identify_column(event.x)
         if column == "#5" and item:
@@ -1587,17 +1904,20 @@ class AnalysisVisualizer:
                 self.file_tree.item(item, values=values)
 
     def clear_files(self):
+        # Clear all loaded files from memory and the tree.
         self.loaded_files.clear()
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
         self.analyzer = DataAnalysis()
 
     def compare_movement(self):
+        # Plot 3D trajectories of nodes from selected simulations for visual comparison.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
+        # Use the plotting toolkit to create a 3D plot.
         plotter = PlottingToolkit()
         plot_config = PlotConfig(
             title="Movement Pattern Comparison",
@@ -1612,7 +1932,6 @@ class AnalysisVisualizer:
             grid=True,
             figure_size=(12, 8)
         )
-
         legend_kwargs = {
             'bbox_to_anchor': (1.15, 0.5),
             'loc': 'center left',
@@ -1638,7 +1957,7 @@ class AnalysisVisualizer:
                     x, y, z = self.analyzer.get_object_trajectory(data, node)
                     plotter.plot(
                         x, y, z,
-                        new_figure=first_file and node == 0,
+                        new_figure=(first_file and node == 0),
                         plot_type='line',
                         color=color,
                         label=f"{filename} - Node {node}" if node == 0 else None,
@@ -1652,13 +1971,229 @@ class AnalysisVisualizer:
         plotter.show()
 
     def compare_displacement(self):
+        # Prompt user to select a node, then plot displacement over time for that node.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
             return
         self.create_node_selection_dialog(files[0])
 
+    def analyze_frequencies(self):
+        # Perform FFT-based frequency analysis on the first selected file.
+        files = self.get_selected_files()
+        if not files:
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        # Hide main window to show plots, then restore it after.
+        self.root.withdraw()
+        try:
+            self.plot_multi_node_frequency_analysis(files[0])
+        finally:
+            self.root.deiconify()
+
+    def plot_multi_node_frequency_analysis(self, file_path):
+        """
+        Perform frequency analysis (FFT) on displacement data from each node.
+        Exclude the endpoints from the frequency analysis by slicing the frequency
+        and FFT arrays to remove the first and last data points.
+        """
+        # Load data and summarize to get number of nodes, etc.
+        data = self.loaded_files[file_path]
+        summary = self.analyzer.get_simulation_summary(data)
+        num_nodes = summary['num_objects']
+
+        # Compute node displacements over time for each node.
+        x0, y0, z0 = self.analyzer.get_object_trajectory(data, 0)
+        x1, y1, z1 = self.analyzer.get_object_trajectory(data, 1)
+        pos0 = np.array([x0[0], y0[0], z0[0]])
+        pos1 = np.array([x1[0], y1[0], z1[0]])
+        spacing = np.linalg.norm(pos1 - pos0)
+
+        node_displacements = []
+        for node in range(num_nodes):
+            x, y, z = self.analyzer.get_object_trajectory(data, node)
+            positions = np.column_stack([x, y, z])
+            initial_pos = positions[0]
+            displacements = np.linalg.norm(positions - initial_pos, axis=1)
+            node_displacements.append(displacements)
+
+        # Compute time step from the data's Time column.
+        time_step = self.analyzer.simulations[data]['Time'].diff().mean()
+        if time_step <= 0:
+            messagebox.showerror("Error", "Invalid time step in simulation data")
+            return
+
+        n_samples = len(node_displacements[0])
+
+        # Compute frequency bins and take half (positive frequencies).
+        # Using fftfreq and slicing to half, then exclude endpoints by slicing [1:-1].
+        freqs = np.fft.fftfreq(n_samples, time_step)[:n_samples // 2]
+        # Exclude the first and last frequency bins to avoid endpoints.
+        freqs = freqs[1:-1]  # exclude endpoints
+
+        # Compute FFT for each node and take magnitude of half spectrum, then exclude endpoints.
+        fft_results = []
+        for displacements in node_displacements:
+            fft_result = np.fft.fft(displacements)
+            half_fft = np.abs(fft_result[:n_samples // 2])
+            half_fft = half_fft[1:-1]  # exclude endpoints
+            fft_results.append(half_fft)
+
+        fft_matrix = np.array(fft_results)
+        max_val = np.max(fft_matrix)
+        if max_val > 0:
+            fft_matrix = fft_matrix / max_val
+
+        # Function to compute theoretical frequencies for string modes.
+        def compute_theoretical_frequencies(n_modes, spring_constant, mass, spacing, num_nodes):
+            if spacing <= 0 or mass <= 0:
+                return np.array([])
+            length = spacing * (num_nodes - 1)
+            if length <= 0:
+                return np.array([])
+            tension = spring_constant * spacing
+            mass_density = mass / spacing
+            v_wave = np.sqrt(tension / mass_density)
+            return np.array([
+                (n / (2 * length)) * v_wave
+                for n in range(1, n_modes + 1)
+            ])
+
+        # Calculate some example theoretical mode frequencies (for reference).
+        theoretical_freqs = compute_theoretical_frequencies(
+            10,
+            spring_constant=1000.0,  # Example values (could be taken from simulation params)
+            mass=0.01,
+            spacing=spacing,
+            num_nodes=num_nodes
+        )
+
+        # Create a PlottingToolkit instance for the heatmap.
+        plotter = PlottingToolkit()
+        # Plot config for the heatmap of FFT magnitude across nodes and frequency.
+        heatmap_config = PlotConfig(
+            title="Frequency Content vs Node Position (Endpoints Excluded)",
+            xlabel="Frequency (Hz)",
+            ylabel="Node Number",
+            grid=True,
+            figure_size=(12, 10)
+        )
+
+        # Create figure and axes using plotter for the heatmap.
+        fig1, ax1 = plotter.create_figure(heatmap_config)
+
+        # Create a heatmap of FFT data.
+        # Note: freqs is now shorter due to endpoint exclusion.
+        im = ax1.pcolormesh(
+            freqs,                   # x-axis: frequency
+            np.arange(num_nodes),    # y-axis: node index
+            fft_matrix,              # magnitude data
+            shading='auto',
+            cmap='viridis'
+        )
+
+        # Add a colorbar for the heatmap.
+        fig1.colorbar(im, ax=ax1, label='Normalized Magnitude')
+
+        # Plot theoretical frequency lines (if they fall within the freq range).
+        for i, freq in enumerate(theoretical_freqs):
+            if freq <= np.max(freqs):
+                ax1.axvline(
+                    x=freq,
+                    color='red',
+                    linestyle='--',
+                    alpha=0.5
+                )
+                ax1.text(
+                    freq, num_nodes + 0.5,
+                    f'Mode {i + 1}\n{freq:.1f} Hz',
+                    rotation=90,
+                    verticalalignment='bottom',
+                    color='red'
+                )
+
+        # Create another PlottingToolkit instance for average spectrum.
+        plotter2 = PlottingToolkit()
+        spectrum_config = PlotConfig(
+            title="Average Frequency Spectrum (Endpoints Excluded)",
+            xlabel="Frequency (Hz)",
+            ylabel="Normalized Magnitude",
+            grid=True,
+            figure_size=(12, 6)
+        )
+
+        # Compute average spectrum over all nodes.
+        average_spectrum = np.mean(fft_matrix, axis=0)
+        # Plot the average spectrum using the second plotter.
+        plotter2.plot(
+            freqs,
+            average_spectrum,
+            new_figure=True,
+            color='blue',
+            label='Average Spectrum',
+            line_style='-',
+            line_width=2,
+            **vars(spectrum_config)
+        )
+
+        # Mark theoretical frequencies on the average spectrum plot.
+        for i, freq in enumerate(theoretical_freqs):
+            if freq <= np.max(freqs):
+                plotter2.ax.axvline(
+                    x=freq,
+                    color='red',
+                    linestyle='--',
+                    alpha=0.5,
+                    label=f'Mode {i + 1}' if i == 0 else None
+                )
+
+        # Identify top peaks in the average spectrum.
+        peak_indices = np.argsort(average_spectrum)[-5:][::-1]
+        peak_freqs = freqs[peak_indices]
+        peak_mags = average_spectrum[peak_indices]
+
+        summary_text = "Dominant Frequencies:\n─────────────────\n"
+        for i, (freq, mag) in enumerate(zip(peak_freqs, peak_mags)):
+            summary_text += f"{i + 1}. {freq:.1f} Hz (mag: {mag:.2f})\n"
+            plotter2.ax.plot(freq, mag, 'ro')
+            plotter2.ax.text(
+                freq, mag + 0.05,
+                f'{freq:.1f} Hz',
+                horizontalalignment='center'
+            )
+
+        # Add a summary textbox to the average spectrum plot.
+        plotter2.ax.text(
+            1.02, 0.95,
+            summary_text,
+            transform=plotter2.ax.transAxes,
+            fontsize=10,
+            verticalalignment='top',
+            bbox=dict(
+                facecolor='white',
+                edgecolor='gray',
+                alpha=0.8,
+                pad=8,
+                boxstyle='round'
+            )
+        )
+
+        # Add a legend to the average spectrum plot.
+        plotter2.ax.legend(
+            bbox_to_anchor=(1.15, 0.5),
+            loc='center left',
+            frameon=True,
+            fancybox=True,
+            shadow=True
+        )
+
+        # Show both the heatmap and the average spectrum plots.
+        plotter.show()
+        plotter2.show()
+
     def create_node_selection_dialog(self, file_path):
+        # Create a dialog to select a node for displacement analysis.
         dialog = tk.Toplevel(self.root)
         dialog.title("Select Node to Analyze")
         dialog.transient(self.root)
@@ -1709,6 +2244,7 @@ class AnalysisVisualizer:
         dialog.geometry(f'+{x}+{y}')
 
     def plot_displacement_comparison(self, node_id):
+        # Plot displacement vs. time for the selected node across chosen simulations.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
@@ -1767,6 +2303,7 @@ class AnalysisVisualizer:
         plotter.show()
 
     def plot_nodal_average_displacement(self):
+        # Plot average displacement per node for selected simulations.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
@@ -1802,7 +2339,6 @@ class AnalysisVisualizer:
             if file_path:
                 data = self.loaded_files[file_path]
                 node_ids, avg_displacements = self.analyzer.get_average_displacements(data)
-
                 plotter.plot(
                     node_ids,
                     avg_displacements,
@@ -1821,6 +2357,7 @@ class AnalysisVisualizer:
         plotter.show()
 
     def compare_stationary(self):
+        # Show which nodes remain stationary across selected simulations.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
@@ -1841,15 +2378,17 @@ class AnalysisVisualizer:
             if nodes:
                 text.insert("end", f"Found {len(nodes)} stationary nodes:\n")
                 for node_id, pos in nodes.items():
+                    displacement = np.linalg.norm(pos)
                     text.insert("end", f"\nNode {node_id}:\n")
                     text.insert("end", f"  Position: {pos}\n")
-                    text.insert("end", f"  Displacement: {np.linalg.norm(pos):.6f}\n")
+                    text.insert("end", f"  Displacement: {displacement:.6f}\n")
             else:
                 text.insert("end", "No stationary nodes found\n")
 
         text.config(state=tk.DISABLED)
 
     def show_summary(self):
+        # Display a summary of the selected simulations in a text window.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
@@ -1876,27 +2415,91 @@ class AnalysisVisualizer:
         text.config(state=tk.DISABLED)
 
     def analyze_harmonics(self):
+        # Perform harmonic analysis on the selected files.
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
+        # Hide main window while showing harmonic analysis plots.
         self.root.withdraw()
-
         try:
             self.plot_harmonic_correlation(files)
         finally:
             self.root.deiconify()
 
     def plot_harmonic_correlation(self, files):
-        fig = plt.figure(figsize=(15, 5))
-        plt.title("Harmonic Analysis Placeholder")
-        plt.show()
+        # Plot correlation of displacement patterns with harmonic modes for each selected file.
+        plotter = PlottingToolkit()
+        num_files = len(files)
+
+        for idx, file_path in enumerate(files):
+            data = self.loaded_files[file_path]
+            filename = os.path.basename(file_path)
+
+            harmonics, correlations = self.analyzer.get_harmonic_correlation(data)
+
+            plot_config = PlotConfig(
+                title=f"Harmonic Analysis - {filename}",
+                xlabel="Harmonic Number",
+                ylabel="Correlation (%)",
+                grid=True,
+                figure_size=(15, 5 * ((num_files + 1) // 2))
+            )
+
+            plotter.plot(
+                harmonics,
+                correlations,
+                plot_type='bar',
+                color='steelblue',
+                alpha=0.7,
+                new_figure=(idx == 0),
+                **vars(plot_config)
+            )
+
+            # Annotate bars.
+            for i, correlation in enumerate(correlations):
+                plotter.ax.text(
+                    i + 1, correlation + 1,
+                    f'{correlation:.1f}%',
+                    horizontalalignment='center',
+                    verticalalignment='bottom',
+                    fontsize=9
+                )
+
+            # Identify top 3 harmonics.
+            sorted_indices = np.argsort(correlations)[::-1]
+            summary_text = (
+                f"Dominant Harmonics:\n"
+                f"1st: {harmonics[sorted_indices[0]]}th ({correlations[sorted_indices[0]]:.1f}%)\n"
+                f"2nd: {harmonics[sorted_indices[1]]}th ({correlations[sorted_indices[1]]:.1f}%)\n"
+                f"3rd: {harmonics[sorted_indices[2]]}th ({correlations[sorted_indices[2]]:.1f}%)"
+            )
+
+            plotter.ax.text(
+                1.02, 0.95,
+                summary_text,
+                transform=plotter.ax.transAxes,
+                fontsize=10,
+                verticalalignment='top',
+                bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, pad=8, boxstyle='round')
+            )
+
+            plotter.update_plot_bounds(
+                x_range=(0.5, len(harmonics) + 0.5),
+                y_range=(0, max(correlations) * 1.15)
+            )
+
+        if plotter.fig:
+            plotter.fig.tight_layout()
+        plotter.show()
 
     def run(self):
+        # Run the Tkinter event loop for this analysis window.
         self.root.mainloop()
 
     def on_closing(self):
+        # When the window is closed, destroy it and show the main_root window again if available.
         self.root.destroy()
         if self.main_root:
             self.main_root.deiconify()
