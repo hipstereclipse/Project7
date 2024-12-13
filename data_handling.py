@@ -237,7 +237,8 @@ class DataAnalysis:
         num_frames = len(df)
         simulation_time = time_col.iloc[-1] - time_col.iloc[0]
         num_objects = self._detect_objects(file_path)
-        stationary_nodes = self.find_stationary_nodes(file_path)
+        # Use 5% as default threshold for summary
+        stationary_nodes = self.find_stationary_nodes(file_path, threshold_percentage=10)
         num_stationary_nodes = len(stationary_nodes)
 
         return {
@@ -329,28 +330,51 @@ class DataAnalysis:
         az = df[az_col].values
         return ax, ay, az
 
-    def find_stationary_nodes(self, file_path, threshold=1e-4):
+    def find_stationary_nodes(self, file_path, threshold_percentage=10.0):
         """
-        Identify nodes that have negligible displacement from their initial position.
+        Identify nodes that have negligible displacement from their initial position,
+        using a threshold that's a percentage of the maximum displacement observed.
 
         Args:
             file_path: Key to the simulation data.
-            threshold: The maximum average displacement to consider a node stationary.
+            threshold_percentage: The percentage of maximum displacement to use as threshold (default: 5.0)
 
         Returns:
             A dictionary of node_id -> initial position for all stationary nodes.
+
+        Raises:
+            ValueError: If threshold_percentage is not between 0 and 100.
         """
+        if not 0 <= threshold_percentage <= 100:
+            raise ValueError("Threshold percentage must be between 0 and 100")
+
         num_objects = self._detect_objects(file_path)
         stationary_nodes = {}
-        # Check each node to see if it barely moves
+
+        # First pass: calculate all displacements and find maximum
+        max_displacement = 0
+        node_displacements = []
+        node_initial_positions = []
+
         for node_id in range(num_objects):
             x, y, z = self.get_object_trajectory(file_path, node_id)
             initial_pos = np.array([x[0], y[0], z[0]])
             positions = np.column_stack([x, y, z])
             displacements = np.linalg.norm(positions - initial_pos, axis=1)
             avg_disp = np.mean(displacements)
-            if avg_disp < threshold:
-                stationary_nodes[node_id] = initial_pos
+
+            max_displacement = max(max_displacement, avg_disp)
+            node_displacements.append(avg_disp)
+            node_initial_positions.append(initial_pos)
+
+        # Calculate threshold based on percentage of maximum displacement
+        threshold = (threshold_percentage / 100.0) * max_displacement
+
+        # Second pass: identify stationary nodes using normalized threshold
+        for node_id in range(num_objects):
+            if node_displacements[node_id] < threshold:
+                stationary_nodes[node_id] = node_initial_positions[node_id]
+
         return stationary_nodes
 
     def get_average_displacements(self, file_path):
@@ -416,7 +440,7 @@ class DataAnalysis:
             pattern.append(rms_disp)
 
         pattern = np.array(pattern)
-        # Normalize pattern by maximum displacement for consistent comparison
+        # Normalizes pattern by maximum displacement for consistent comparison
         max_disp = np.max(np.abs(pattern))
         if max_disp > 0:
             pattern /= max_disp
@@ -428,6 +452,7 @@ class DataAnalysis:
         x_positions = np.linspace(0, 1, num_objects)
         harmonics = np.arange(1, num_harmonics + 1)
         correlations = []
+
         # Compare pattern against each harmonic shape
         for n in harmonics:
             harmonic_pattern = generate_harmonic(x_positions, n)
