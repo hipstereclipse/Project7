@@ -579,25 +579,23 @@ class ForceHandler:
         self.duration_remaining = 0.01
         self.amplitude = 10.0
         self.selected_object = len(objects) // 2
-
-        # Default width for the Gaussian
         self.gaussian_width = len(self.objects) / 8.0
+        self.sinusoidal_frequency = 1.0  # Frequency for sinusoidal force
 
-        # Different force profiles, now referencing self.gaussian_width
         self.types = {
             'Single Mass': lambda t, x: np.array([0.0, 0.0, 1.0]),
-            'Sinusoidal': lambda t, x: np.array([0.0, 0.0, np.sin(2 * np.pi * t)]),
+            'Sinusoidal': lambda t, x: np.array([0.0, 0.0, np.sin(2 * np.pi * self.sinusoidal_frequency * t)]),
             'Gaussian': lambda t, x: np.array(
                 [0.0, 0.0, np.exp(-(x - len(self.objects) // 2) ** 2 / self.gaussian_width ** 2)]
             )
         }
 
-        # Force directions
         self.directions = {
             'Up/Down (Z)': np.array([0.0, 0.0, 1.0]),
             'Left/Right (X)': np.array([1.0, 0.0, 0.0]),
             'Front/Back (Y)': np.array([0.0, 1.0, 0.0])
         }
+
         self.selected_type = 'Single Mass'
         self.selected_direction = 'Up/Down (Z)'
 
@@ -633,22 +631,23 @@ class ForceHandler:
             return ('Force Active', 'lightgreen')
 
     def apply(self, duration=None):
-        """
-        Apply the currently selected force type and direction to the chosen object(s).
-        Uses self.gaussian_width for the Gaussian type.
-        """
         direction = self.directions[self.selected_direction]
+
         if self.selected_type == 'Single Mass':
             force = direction * self.amplitude
             self.physics.apply_force(self.selected_object, force, duration)
+
         elif self.selected_type == 'Sinusoidal':
-            magnitude = np.sin(2 * np.pi * self.physics.time) * self.amplitude
+            # Use self.sinusoidal_frequency
+            magnitude = np.sin(2 * np.pi * self.sinusoidal_frequency * self.physics.time) * self.amplitude
             self.physics.apply_force(self.selected_object, direction * magnitude, duration)
+
         elif self.selected_type == 'Gaussian':
-            # Apply Gaussian force pattern across all non-pinned nodes
+            # Use self.gaussian_width
             for i in range(1, len(self.objects) - 1):
                 magnitude = np.exp(-(i - self.selected_object) ** 2 / self.gaussian_width ** 2) * self.amplitude
                 self.physics.apply_force(i, direction * magnitude, duration)
+
 
 
     def deactivate(self):
@@ -1152,15 +1151,31 @@ class SimulationVisualizer:
         self.duration_slider.on_changed(self.set_force_duration)
         self.duration_slider.on_changed(self.set_force_duration_remaining)
 
-        # Add a new slider for Gaussian width
+        # Create the Gaussian width slider but initially hide it
+        self.gaussian_width_slider_ax = plt.axes([left_panel_start+.02, 0.25, panel_width-.02, 0.02])
         self.gaussian_width_slider = Slider(
-            plt.axes([left_panel_start+0.02, 0.25, panel_width-0.02, 0.02]),
+            self.gaussian_width_slider_ax,
             'Gaussian Width',
             0.1, len(self.objects) / 2.0,
             valinit=self.force_handler.gaussian_width,
             valfmt='%.2f'
         )
         self.gaussian_width_slider.on_changed(self.set_gaussian_width)
+
+        # Create the sinusoidal frequency slider but initially hide it
+        self.frequency_slider_ax = plt.axes([left_panel_start, 0.25, panel_width, 0.02])
+        self.frequency_slider = Slider(
+            self.frequency_slider_ax,
+            'Frequency',
+            0.1, 10.0,
+            valinit=self.force_handler.sinusoidal_frequency,
+            valfmt='%.2f'
+        )
+        self.frequency_slider.on_changed(self.set_sinusoidal_frequency)
+
+        # Hide both sliders initially (since 'Single Mass' is default)
+        self.gaussian_width_slider_ax.set_visible(False)
+        self.frequency_slider_ax.set_visible(False)
 
         # Buttons to apply force and toggle continuous force mode
         self.force_button = Button(
@@ -1520,8 +1535,25 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def set_force_type(self, label):
-        """Change the currently selected force type based on user radio button selection."""
+        """
+        Change the currently selected force type based on user radio button selection.
+        Also show/hide the Gaussian width or frequency slider depending on selection.
+        """
         self.force_handler.selected_type = label
+
+        # Hide both sliders by default
+        self.gaussian_width_slider_ax.set_visible(False)
+        self.frequency_slider_ax.set_visible(False)
+
+        if label == 'Gaussian':
+            # Show the Gaussian width slider
+            self.gaussian_width_slider_ax.set_visible(True)
+        elif label == 'Sinusoidal':
+            # Show the frequency slider
+            self.frequency_slider_ax.set_visible(True)
+
+        # Redraw figure to reflect changes
+        self.fig.canvas.draw_idle()
 
     def set_force_direction(self, label):
         """Change the force direction based on user selection."""
@@ -1554,10 +1586,13 @@ class SimulationVisualizer:
         self.fig.canvas.draw_idle()
 
     def set_gaussian_width(self, val):
-        """
-        Callback to update the Gaussian width in the force handler when the slider changes.
-        """
         self.force_handler.gaussian_width = float(val)
+        self.update_info()
+        if self.fig:
+            self.fig.canvas.draw_idle()
+
+    def set_sinusoidal_frequency(self, val):
+        self.force_handler.sinusoidal_frequency = float(val)
         self.update_info()
         if self.fig:
             self.fig.canvas.draw_idle()
