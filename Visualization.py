@@ -772,7 +772,7 @@ class StringSimulationSetup:
         """UI elements for basic string properties: number of segments, k, mass, and display settings."""
         props_frame = ttk.LabelFrame(parent, text="String Properties", padding="10")
         props_frame.pack(fill="x", padx=5, pady=5)
-        ttk.Label(props_frame, text="Number of segments:").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Label(props_frame, text="Number of Masses:").grid(row=0, column=0, padx=5, pady=5)
         ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10).grid(row=0, column=1, padx=5, pady=5)
         ttk.Label(props_frame, text="Spring constant (N/m):").grid(row=1, column=0, padx=5, pady=5)
         ttk.Entry(props_frame, textvariable=self.spring_constant_var, width=10).grid(row=1, column=1, padx=5, pady=5)
@@ -843,8 +843,8 @@ class StringSimulationSetup:
         """Check that all user-entered parameters are valid."""
         try:
             num_segments = self.num_segments_var.get()
-            if num_segments < 2:
-                raise ValueError("Number of segments must be at least 2")
+            if num_segments < 3:
+                raise ValueError("Number of masses must be at least 3")
 
             spring_constant = self.spring_constant_var.get()
             if spring_constant <= 0:
@@ -873,8 +873,8 @@ class StringSimulationSetup:
             return None
         try:
             # Re-validate before returning parameters
-            if self.num_segments_var.get() < 2:
-                raise ValueError("Number of segments must be at least 2")
+            if self.num_segments_var.get() < 3:
+                raise ValueError("Number of masses must be at least 3")
             if self.spring_constant_var.get() <= 0:
                 raise ValueError("Spring constant must be positive")
             if self.mass_var.get() <= 0:
@@ -885,7 +885,7 @@ class StringSimulationSetup:
                 raise ValueError("Force magnitude cannot be negative")
 
             params = SimulationParameters(
-                num_segments=self.num_segments_var.get(),
+                num_segments=(self.num_segments_var.get() - 1),
                 spring_constant=self.spring_constant_var.get(),
                 mass=self.mass_var.get(),
                 dt=self.dt_var.get(),
@@ -907,7 +907,7 @@ class StringSimulationSetup:
         if not self.validate_parameters():
             return
         self.simulation_params = SimulationParameters(
-            num_segments=self.num_segments_var.get(),
+            num_segments=(self.num_segments_var.get()-1),
             spring_constant=self.spring_constant_var.get(),
             mass=self.mass_var.get(),
             dt=self.dt_var.get(),
@@ -1121,15 +1121,19 @@ class SimulationVisualizer:
         )
         self.direction_radio.on_clicked(self.set_force_direction)
 
-        # Slider for selecting which object to apply force to
+        # Calculate valid slider range for object selection
+        min_object = 1  # Skip first object (index 0) as it's usually fixed
+        max_object = max(2, len(self.objects) - 2)  # Ensure at least 2 for slider range, skip last object
+        initial_object = min(max_object, max(min_object, self.force_handler.selected_object))
+
+        # Create object selection slider with guaranteed valid range
         self.object_slider = Slider(
             plt.axes([left_panel_start, 0.40, panel_width, 0.02]),
             'Object',
-            1, len(self.objects) - 2,
-            valinit=self.force_handler.selected_object,
+            min_object, max_object,
+            valinit=initial_object,
             valfmt='%d'
         )
-        self.object_slider.on_changed(self.set_selected_object)
 
         # Slider for force amplitude
         self.amplitude_slider = Slider(
