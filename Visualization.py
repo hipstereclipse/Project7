@@ -1167,7 +1167,7 @@ class SimulationVisualizer:
         self.frequency_slider = Slider(
             self.frequency_slider_ax,
             'Frequency',
-            0.1, 10.0,
+            0.1, 999.9,
             valinit=self.force_handler.sinusoidal_frequency,
             valfmt='%.2f'
         )
@@ -1787,36 +1787,70 @@ class AnalysisVisualizer:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_gui(self):
-        # Create a main frame to hold all UI elements, add padding for aesthetics.
+        """Set up the main GUI elements with responsive layout."""
+        # Configure grid weights for the root window
+        self.root.grid_rowconfigure(0, weight=1)  # Allow vertical expansion
+        self.root.grid_columnconfigure(0, weight=1)  # Allow horizontal expansion
+
+        # Create main frame with padding and configure its grid
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky="nsew")
 
-        # Create a labeled frame for file management (loading, deleting CSV files).
+        # Configure main frame grid weights
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)  # Make file frame take most space
+        self.main_frame.grid_rowconfigure(2, weight=0)  # Analysis frame doesn't need to expand
+
+        # Create and configure file management frame
         file_frame = ttk.LabelFrame(self.main_frame, text="File Management", padding="5")
-        file_frame.grid(row=0, column=0, sticky="ew", pady=5)
+        file_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 5))
 
-        # A frame for the file load and delete buttons.
+        # Configure file frame grid weights
+        file_frame.grid_columnconfigure(0, weight=1)
+        file_frame.grid_rowconfigure(1, weight=1)  # Let tree frame expand
+
+        # Button frame for file management controls
         button_frame = ttk.Frame(file_frame)
-        button_frame.grid(row=0, column=0, sticky="ew", padx=5)
-        button_frame.columnconfigure(1, weight=1)
+        button_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(0, 5))
+        button_frame.grid_columnconfigure(1, weight=1)  # Space between left and right buttons
 
-        # Button to load CSV simulation files.
-        ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(row=0, column=0, padx=5, sticky="w")
+        # Left-side buttons
+        ttk.Button(button_frame, text="Load Files", command=self.load_files).grid(
+            row=0, column=0, padx=(0, 5), sticky="w"
+        )
 
-        # Frame for delete actions (to the right side of button_frame).
+        # Right-side buttons in their own frame
         delete_frame = ttk.Frame(button_frame)
         delete_frame.grid(row=0, column=2, sticky="e")
 
-        # Button to delete selected files from the list.
-        ttk.Button(delete_frame, text="Delete Selected", command=self.delete_selected).pack(side="left", padx=5)
-        # Button to clear all loaded files.
-        ttk.Button(delete_frame, text="Clear All", command=self.clear_files).pack(side="left", padx=5)
+        ttk.Button(delete_frame, text="Delete Selected", command=self.delete_selected).pack(
+            side="left", padx=5
+        )
+        ttk.Button(delete_frame, text="Clear All", command=self.clear_files).pack(
+            side="left", padx=(0, 5)
+        )
 
-        # Treeview to display loaded files and summary information.
-        self.file_tree = ttk.Treeview(file_frame, show="headings", height=3, selectmode="extended")
-        self.file_tree.grid(row=1, column=0, sticky="ew", pady=5)
+        # Create and configure the tree frame to expand
+        tree_frame = ttk.Frame(file_frame)
+        tree_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
 
-        # Define columns for file display: filename, nodes, frames, simulation time, and color.
+        # Create the treeview
+        self.file_tree = ttk.Treeview(tree_frame, show="headings", selectmode="extended")
+        self.file_tree.grid(row=0, column=0, sticky="nsew")
+
+        # Add vertical scrollbar
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.file_tree.yview)
+        vsb.grid(row=0, column=1, sticky="ns")
+        self.file_tree.configure(yscrollcommand=vsb.set)
+
+        # Add horizontal scrollbar
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.file_tree.xview)
+        hsb.grid(row=1, column=0, sticky="ew")
+        self.file_tree.configure(xscrollcommand=hsb.set)
+
+        # Configure treeview columns
         self.file_tree["columns"] = ("filename", "nodes", "frames", "time", "color")
         columns = [
             ("filename", "Filename", 200, "w"),
@@ -1825,18 +1859,23 @@ class AnalysisVisualizer:
             ("time", "Simulation Time", 150, "center"),
             ("color", "Color", 100, "center")
         ]
+
         for col, heading, width, anchor in columns:
             self.file_tree.heading(col, text=heading)
-            self.file_tree.column(col, width=width, anchor=anchor)
+            self.file_tree.column(col, width=width, anchor=anchor, stretch=True)  # Allow columns to stretch
 
-        # Allow cycling the assigned color by double-clicking on the color column.
+        # Bind double-click on color column
         self.file_tree.bind("<Double-1>", self.cycle_color)
 
-        # A labeled frame for analysis options and buttons to run various computations.
+        # Create and configure analysis options frame - no vertical expansion needed
         analysis_frame = ttk.LabelFrame(self.main_frame, text="Analysis Options", padding="5")
-        analysis_frame.grid(row=1, column=0, sticky="ew", pady=5)
+        analysis_frame.grid(row=2, column=0, sticky="ew", pady=5)
 
-        # First row of analysis buttons:
+        # Configure the analysis frame grid
+        for i in range(5):  # First row
+            analysis_frame.grid_columnconfigure(i, weight=1)
+
+        # First row of analysis buttons
         row1_buttons = [
             ("View Summary", self.show_summary),
             ("Find Stationary Nodes", self.compare_stationary),
@@ -1845,21 +1884,20 @@ class AnalysisVisualizer:
             ("Movement Patterns", self.compare_movement)
         ]
 
-        # Second row of analysis buttons (more advanced):
+        for i, (text, command) in enumerate(row1_buttons):
+            ttk.Button(analysis_frame, text=text, command=command).grid(
+                row=0, column=i, padx=5, pady=5, sticky="ew"
+            )
+
+        # Second row of analysis buttons (centered)
         row2_buttons = [
             ("Harmonic Analysis", self.analyze_harmonics),
             ("Frequency Analysis", self.analyze_frequencies)
         ]
 
-        # Place the first row of analysis buttons.
-        for i, (text, command) in enumerate(row1_buttons):
-            ttk.Button(analysis_frame, text=text, command=command).grid(
-                row=0, column=i, padx=5, pady=5, sticky="ew"
-            )
-            analysis_frame.columnconfigure(i, weight=1)
-
-        # Center the second row of buttons under the first row.
+        # Calculate starting column to center the second row
         start_col = (len(row1_buttons) - len(row2_buttons)) // 2
+
         for i, (text, command) in enumerate(row2_buttons):
             ttk.Button(analysis_frame, text=text, command=command).grid(
                 row=1, column=start_col + i, padx=5, pady=5, sticky="ew"
