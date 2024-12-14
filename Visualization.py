@@ -1058,15 +1058,7 @@ class SimulationVisualizer:
             fontsize=10,
             verticalalignment='top'
         )
-
-        self.camera_info_text = self.ax.text2D(
-            1.15, 0.40,
-            '',
-            transform=self.ax.transAxes,
-            color=text_color,
-            fontsize=10,
-            verticalalignment='top'
-        )
+        self.plotter.ui_elements['text']['force_info'] = self.force_info_text
 
     def setup_plots(self):
         """
