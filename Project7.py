@@ -17,8 +17,8 @@ class MainMenu:
         self.root.title("String Physics Simulation and Analysis Tool")
 
         # Calculate window size (30% of screen)
-        window_width = int(self.root.winfo_screenwidth() * 0.27)
-        window_height = int(self.root.winfo_screenheight() * 0.6)
+        window_width = 350
+        window_height = 450
 
         # Calculate position to center the window
         x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)

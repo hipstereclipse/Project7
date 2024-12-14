@@ -2101,6 +2101,7 @@ class AnalysisVisualizer:
         """
         Compares observed frequencies from the simulation with theoretical natural frequencies
         based on string parameters. For each simulation file, it:
+
         1. Calculates theoretical natural frequencies using fn = (n/2L) * sqrt(T/μ)
         2. Extracts actual frequency peaks from simulation data
         3. Compares theoretical vs observed frequencies
@@ -2625,8 +2626,8 @@ class AnalysisVisualizer:
 
     def analyze_frequencies(self):
         """
-        This method would perform a frequency analysis of the data,
-        but here I just check if I have selected files.
+        This method triggers the frequency analysis of the data,
+        but mostly exists just check if I have selected files.
         If I do, I call a function to plot frequency analysis results.
         Otherwise, I show a warning.
         """
@@ -2737,7 +2738,7 @@ class AnalysisVisualizer:
                 **vars(spectrum_config)
             )
 
-            # Identify top peaks
+            # Identifies top peaks
             peak_indices = np.argsort(average_spectrum)[-5:][::-1]
             peak_freqs = freqs[peak_indices]
             peak_mags = average_spectrum[peak_indices]
@@ -2755,7 +2756,7 @@ class AnalysisVisualizer:
             for i, (pf, pm) in enumerate(zip(peak_freqs, peak_mags)):
                 summary_text += f"{i + 1}: {pf:.1f} Hz ({pm:.2f})\n"
 
-            # Place text box inside plot area, align properly, and adjust layout
+            # Places text box inside plot area, aligns properly, and adjusts layout
             plotter2.ax.text(
                 0.95, 0.95,
                 summary_text,
@@ -2766,7 +2767,7 @@ class AnalysisVisualizer:
                 bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, boxstyle='round')
             )
 
-            # Show legends and adjust layout so nothing is cut off
+            # Shows legends and adjust layout so nothing is cut off
             plotter2.ax.legend(loc='upper left', frameon=True)
             fig1.tight_layout()
             plotter2.fig.tight_layout()
@@ -2812,7 +2813,7 @@ class AnalysisVisualizer:
 
             harmonics, correlations = self.analyzer.get_harmonic_correlation(file_path)
 
-            # Retrieve assigned color
+            # Retrieves assigned color
             color = None
             for item in self.file_tree.get_children():
                 values = self.file_tree.item(item)["values"]
@@ -2822,7 +2823,7 @@ class AnalysisVisualizer:
             if color is None:
                 color = 'steelblue'
 
-            # Plot configuration for harmonic analysis
+            # Plots configuration for harmonic analysis
             plot_config = PlotConfig(
                 title=f"Harmonic Analysis - {filename}",
                 xlabel="Harmonic Number",
@@ -2831,7 +2832,7 @@ class AnalysisVisualizer:
                 figure_size=(15, 5)
             )
 
-            # Plot all harmonics as a bar chart with label
+            # Plots all harmonics as a bar chart with label
             plotter.plot(
                 harmonics,
                 correlations,
@@ -2843,7 +2844,7 @@ class AnalysisVisualizer:
             )
             first_file = False
 
-            # Add text on each bar
+            # Adds text on each bar
             for i, cval in enumerate(correlations):
                 plotter.ax.text(
                     harmonics[i],
@@ -2854,7 +2855,7 @@ class AnalysisVisualizer:
                     fontsize=9
                 )
 
-            # Identify top 3 harmonics
+            # Identifies top 3 harmonics
             sorted_indices = np.argsort(correlations)[::-1]
             top_indices = sorted_indices[:3]
             summary_text = (
@@ -2864,7 +2865,7 @@ class AnalysisVisualizer:
                 f"3: {harmonics[top_indices[2]]}th ({correlations[top_indices[2]]:.1f}%)"
             )
 
-            # Place the summary text as a small annotation box
+            # Places the summary text as a small annotation box
             plotter.ax.text(
                 0.95, 0.95,
                 summary_text,
