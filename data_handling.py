@@ -194,7 +194,7 @@ class DataAnalysis:
 
         # I'm calling find_stationary_nodes with a threshold_percentage=10 by default.
         # That means if a node doesn't move at more than 10% of max displacement, I consider it stationary.
-        stationary_nodes = self.find_stationary_nodes(file_path, threshold_percentage=10)
+        stationary_nodes = self.find_stationary_nodes(file_path, threshold_percentage=15)
         num_stationary_nodes = len(stationary_nodes)
 
         return {
@@ -257,7 +257,7 @@ class DataAnalysis:
         az = df[az_col].values
         return ax, ay, az
 
-    def find_stationary_nodes(self, file_path, threshold_percentage=10.0):
+    def find_stationary_nodes(self, file_path, threshold_percentage=15.0):
         """
         I want to find nodes that barely moved compared to others. I define a threshold based on a percentage
         of the max average displacement. If a node's average displacement is below that threshold,
@@ -301,7 +301,7 @@ class DataAnalysis:
         I want to know how much, on average, each node moved away from its initial position.
         I compute the displacement at each timestep, average it, and return these averages.
 
-        I return arrays: node_ids and their corresponding average displacements.
+        returns arrays: node_ids and their corresponding average displacements.
         """
         num_objects = self._detect_objects(file_path)
         node_ids = np.arange(num_objects)
@@ -314,21 +314,78 @@ class DataAnalysis:
             avg_displacements.append(np.mean(displacements))
         return node_ids, np.array(avg_displacements)
 
-    def get_normalized_displacements(self, file_path):
+    def get_normalized_average_displacements(self, file_path):
         """
-        I want to compute something similar to average displacements, but now I want to normalize by the number of nodes.
-        This way, if I compare different simulations with different numbers of nodes, I have a fair comparison.
+        I want to compute something similar to average displacements, but now I want to normalize each node's displacement
+        based on that node's own maximum displacement. That means for each node, I:
+        1. Compute its displacement time-series.
+        2. Find the maximum displacement for that node.
+        3. Divide all of its displacements by that maximum, resulting in values between 0 and 1.
+        4. Compute the average of these normalized values to represent the node's normalized displacement.
 
-        I'll compute the average displacement for each node just like above,
-        then I'll divide the average displacements by the total number of nodes.
-        This should give me normalized displacement values that let me compare simulations more fairly.
-
-        I return arrays: node_ids and their corresponding normalized displacements.
+        returns arrays: node_ids and their corresponding normalized average displacements.
         """
-        node_ids, avg_displacements = self.get_average_displacements(file_path)
-        num_objects = len(node_ids)
-        normalized_displacements = avg_displacements / num_objects
-        return node_ids, normalized_displacements
+        num_objects = self._detect_objects(file_path)
+        node_ids = np.arange(num_objects)
+        normalized_averages = np.zeros(num_objects)
+
+        # Iterate over each node and compute normalized average displacement
+        for i, node_id in enumerate(node_ids):
+            x, y, z = self.get_object_trajectory(file_path, node_id)
+            initial_pos = np.array([x[0], y[0], z[0]])
+            positions = np.column_stack([x, y, z])
+            displacements = np.linalg.norm(positions - initial_pos, axis=1)
+
+            # Avoid division by zero if max displacement is zero (stationary node)
+            max_disp = np.max(displacements) if np.max(displacements) != 0 else 1.0
+            normalized = displacements / max_disp
+
+            # Use the average of normalized displacements as the node's normalized value
+            normalized_averages[i] = np.mean(normalized)
+
+        return node_ids, normalized_averages
+
+    def get_normalized_amplitudes(self, file_path):
+        """
+        Computes normalized maximum amplitudes for each node to make them comparable
+        regardless of their absolute displacement values. For each node:
+        1. Compute its total displacement from initial position over time
+        2. Find the maximum displacement value (peak amplitude)
+        3. Compare this to the largest displacement seen in any node
+        4. Normalize to get values between 0 and 1
+
+        Returns:
+        - node_ids: Array of node indices
+        - normalized_amplitudes: Array of normalized maximum amplitudes for each node
+        """
+        # First, detect how many nodes we have in the simulation
+        num_objects = self._detect_objects(file_path)
+        node_ids = np.arange(num_objects)
+
+        # We'll store the maximum displacement (amplitude) for each node
+        max_amplitudes = np.zeros(num_objects)
+
+        # Calculate maximum displacement for each node
+        for i, node_id in enumerate(node_ids):
+            # Get trajectory data
+            x, y, z = self.get_object_trajectory(file_path, node_id)
+            initial_pos = np.array([x[0], y[0], z[0]])
+            positions = np.column_stack([x, y, z])
+
+            # Calculate displacement from initial position at each timestep
+            displacements = np.linalg.norm(positions - initial_pos, axis=1)
+
+            # Store the maximum displacement this node experienced
+            max_amplitudes[i] = np.max(displacements)
+
+        # Find the overall maximum displacement across all nodes
+        overall_max = np.max(max_amplitudes)
+
+        # Normalize all amplitudes by the overall maximum
+        # Add small epsilon to avoid division by zero
+        normalized_amplitudes = max_amplitudes / (overall_max + 1e-10)
+
+        return node_ids, normalized_amplitudes
 
     def get_harmonic_correlation(self, file_path, num_harmonics=10):
         """

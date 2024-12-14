@@ -11,7 +11,7 @@ class MainMenu:
     """
 
     def __init__(self):
-        """Initialize the main menu window with default settings."""
+        """Initializes the main menu window with default settings."""
         # Create the main window
         self.root = tk.Tk()
         self.root.title("String Physics Simulation and Analysis Tool")
@@ -41,8 +41,8 @@ class MainMenu:
         self.returning_from_simulation = False
 
     def setup_gui(self):
-        """Set up the main GUI elements."""
-        # Create main frame with padding
+        """Sets up the main GUI elements."""
+        # Creates main frame with padding
         main_frame = ttk.Frame(self.root, padding="20")
         main_frame.grid(row=0, column=0, sticky="nsew")
 
@@ -126,7 +126,7 @@ class MainMenu:
         pass
 
     def start_simulation(self):
-        """Launch the simulation setup and handling loop."""
+        """Launches the simulation setup and handling loop."""
         self.root.withdraw()  # Hide main menu
 
         # Create setup GUI and wait for parameters
@@ -148,7 +148,7 @@ class MainMenu:
         self.root.deiconify()
 
     def start_analysis(self):
-        """Launch the analysis visualization system."""
+        """Launches the analysis visualization system."""
         self.root.withdraw()  # Hide main menu
 
         # Create and run analyzer
@@ -174,7 +174,5 @@ def main():
     """
     menu = MainMenu()
     menu.run()
-
-
 
 main()

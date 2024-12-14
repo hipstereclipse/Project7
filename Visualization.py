@@ -1852,18 +1852,18 @@ class AnalysisVisualizer:
         for loading and deleting files.
         I also add buttons in the analysis frame for different analyses.
         """
-        # configures the root grid so the main frame can expand
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
+        # Configure grid weights for the root window
+        self.root.grid_rowconfigure(0, weight=1)  # Allows vertical expansion
+        self.root.grid_columnconfigure(0, weight=1)  # Allows horizontal expansion
 
-        # adds a main frame with padding
+        # Creates main frame with padding and configures its grid
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky="nsew")
 
         # allows the main frame to expand horizontally and vertically
         self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(2, weight=0)
+        self.main_frame.grid_rowconfigure(0, weight=1)  # Make file frame take most space
+        self.main_frame.grid_rowconfigure(2, weight=0)  # Analysis frame doesn't need to expand
 
         # adds a labeled frame for file management at the top
         file_frame = ttk.LabelFrame(self.main_frame, text="File Management", padding="5")
@@ -1904,17 +1904,32 @@ class AnalysisVisualizer:
         self.file_tree = ttk.Treeview(tree_frame, show="headings", selectmode="extended")
         self.file_tree.grid(row=0, column=0, sticky="nsew")
 
-        # no scroll bars added here, so the file management window has no scrollbars as requested
+        # Configures treeview columns
+        self.file_tree["columns"] = ("filename", "nodes", "frames", "time", "color")
+        columns = [
+            ("filename", "Filename", 200, "w"),
+            ("nodes", "Nodes", 100, "center"),
+            ("frames", "Frames", 120, "center"),
+            ("time", "Simulation Time", 150, "center"),
+            ("color", "Color", 100, "center")
+        ]
 
-        # adds a labeled frame below for analysis options
+        for col, heading, width, anchor in columns:
+            self.file_tree.heading(col, text=heading)
+            self.file_tree.column(col, width=width, anchor=anchor, stretch=True)  # Allow columns to stretch
+
+        # Bind double-click on color column
+        self.file_tree.bind("<Double-1>", self.cycle_color)
+
+        # Create and configure analysis options frame - no vertical expansion needed
         analysis_frame = ttk.LabelFrame(self.main_frame, text="Analysis Options", padding="5")
         analysis_frame.grid(row=2, column=0, sticky="ew", pady=5)
 
-        # configures columns in the analysis frame so buttons can expand evenly
-        for i in range(5):
+        # Configure the analysis frame grid
+        for i in range(5):  # First row
             analysis_frame.grid_columnconfigure(i, weight=1)
 
-        # defines a row of analysis buttons
+        # First row of analysis buttons
         row1_buttons = [
             ("View Summary", self.show_summary),
             ("Find Stationary Nodes", self.compare_stationary),
@@ -1929,21 +1944,14 @@ class AnalysisVisualizer:
                 row=0, column=i, padx=5, pady=5, sticky="ew"
             )
 
-        # adds the "Normalized Displacements" button beneath "Average Displacements"
-        # "Average Displacements" is at row=0, column=3, so I put "Normalized Displacements" at row=1, column=3
-        # This button plots displacements normalized by the number of nodes, making them more comparable between sims.
-        ttk.Button(analysis_frame, text="Normalized Displacements",
-                   command=self.plot_nodal_normalized_displacement).grid(
-            row=1, column=3, padx=5, pady=5, sticky="ew"
-        )
-
-        # defines a second row of analysis buttons (Harmonic & Frequency Analysis)
+        # Second row of analysis buttons (centered)
         row2_buttons = [
             ("Harmonic Analysis", self.analyze_harmonics),
-            ("Frequency Analysis", self.analyze_frequencies)
+            ("Frequency Analysis", self.analyze_frequencies),
+            ("Normalized Displacements", self.plot_nodal_normalized_displacement)
         ]
 
-        # calculates the starting column to center these two buttons under the first row
+        # Calculate starting column to center the second row
         start_col = (len(row1_buttons) - len(row2_buttons)) // 2
 
         # adds the second row of buttons
@@ -2040,6 +2048,28 @@ class AnalysisVisualizer:
                     break
         return selected_files
 
+    def cycle_color(self, event):
+        # On double-clicking the color column, cycle through the available colors.
+        item = self.file_tree.identify_row(event.y)
+        column = self.file_tree.identify_column(event.x)
+        if column == "#5" and item:
+            values = list(self.file_tree.item(item)["values"])
+            if len(values) >= 5:
+                current_color = values[4]
+                try:
+                    next_index = (self.colors.index(current_color) + 1) % len(self.colors)
+                except ValueError:
+                    next_index = 0
+                values[4] = self.colors[next_index]
+                self.file_tree.item(item, values=values)
+
+    def clear_files(self):
+        # Clear all loaded files from memory and the tree.
+        self.loaded_files.clear()
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+        self.analyzer = DataAnalysis()
+
     def show_summary(self):
         """
         This method shows a new window with a summary of each selected simulation.
@@ -2067,6 +2097,69 @@ class AnalysisVisualizer:
             for node_id, pos in summary['stationary_node_positions'].items():
                 text.insert("end", f"Node {node_id} position: {pos}\n")
         text.config(state=tk.DISABLED)
+
+    def compare_movement(self):
+        """
+        Plots 3D trajectories of the nodes from selected simulations to compare movement patterns.
+        Each simulation gets its own color from the treeview, and all are shown in one figure.
+        After plotting, a single legend is displayed and layout is adjusted so it doesn't cut off.
+        """
+        files = self.get_selected_files()
+        if not files:
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        # Create a 3D plot for movement pattern comparison
+        plotter = PlottingToolkit()
+        plot_config = PlotConfig(
+            title="Movement Pattern Comparison",
+            xlabel="X Position",
+            ylabel="Y Position",
+            zlabel="Z Position",
+            is_3d=True,
+            view_preset=ViewPreset.ISOMETRIC,
+            interactive_3d=True,
+            show_view_controls=True,
+            show_animation_controls=True,
+            grid=True,
+            figure_size=(12, 8)
+        )
+
+        # We'll store plot handles to ensure we have proper legends at the end
+        first_file = True
+        files_to_plot = self.get_selected_files()
+
+        for item in self.file_tree.get_children():
+            values = self.file_tree.item(item)["values"]
+            filename = values[0]
+            color = values[4]
+            file_path = next((p for p in files_to_plot if os.path.basename(p) == filename), None)
+            if file_path:
+                data = self.loaded_files[file_path]
+                summary = self.analyzer.get_simulation_summary(file_path)
+                num_nodes = summary['num_objects']
+
+                # Plot a line for each node to show its trajectory
+                for node in range(num_nodes):
+                    x, y, z = self.analyzer.get_object_trajectory(file_path, node)
+                    # Only label the first node of each simulation in the legend for cleanliness
+                    label = f"{filename}" if node == 0 else None
+                    plotter.plot(
+                        x, y, z,
+                        new_figure=(first_file and node == 0),
+                        plot_type='line',
+                        color=color,
+                        label=label,
+                        alpha=0.5,
+                        line_width=1.5,
+                        **vars(plot_config)
+                    )
+                first_file = False
+
+        # After all are plotted, show legend and adjust layout to avoid cutoff
+        plotter.ax.legend(loc='best', frameon=True)
+        plotter.fig.tight_layout()
+        plotter.show()
 
     def compare_stationary(self):
         """
@@ -2165,10 +2258,9 @@ class AnalysisVisualizer:
 
     def plot_displacement_comparison(self, node_id):
         """
-        This method plots displacement vs. time for the selected node across all chosen simulations.
-        It uses the PlottingToolkit to create a 2D plot. Each simulation gets a different color/label.
-        If an error occurs (like missing columns), it shows an error message.
-        If no files selected, it warns the user.
+        Given a node_id, plots displacement over time for that node from all selected simulations.
+        Each simulation line is labeled by filename, with chosen color. After plotting,
+        shows a legend and adjusts layout.
         """
         files = self.get_selected_files()
         if not files:
@@ -2183,24 +2275,15 @@ class AnalysisVisualizer:
             grid=True,
             figure_size=(12, 8)
         )
-        legend_kwargs = {
-            'bbox_to_anchor': (1.15, 0.5),
-            'loc': 'center left',
-            'frameon': True,
-            'fancybox': True,
-            'shadow': True,
-            'fontsize': 10,
-            'title': 'Simulations'
-        }
 
         first_file = True
-        # goes through all files in the tree and plot only those that are selected
+        files_to_plot = self.get_selected_files()
+
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item)["values"]
             filename = values[0]
             color = values[4]
-
-            file_path = next((p for p in files if os.path.basename(p) == filename), None)
+            file_path = next((p for p in files_to_plot if os.path.basename(p) == filename), None)
             if file_path:
                 data = self.loaded_files[file_path]
                 try:
@@ -2211,6 +2294,7 @@ class AnalysisVisualizer:
                     time_step = self.analyzer.simulations[file_path]['Time'].diff().mean()
                     t = np.arange(len(displacements)) * time_step
 
+                    # Plot line for this simulation with filename label and chosen color
                     plotter.plot(
                         t,
                         displacements,
@@ -2219,21 +2303,22 @@ class AnalysisVisualizer:
                         label=filename,
                         line_style='-',
                         line_width=1.5,
-                        legend_kwargs=legend_kwargs if not first_file else None,
                         **vars(plot_config)
                     )
                     first_file = False
                 except Exception as e:
                     messagebox.showerror("Error", f"Error plotting {filename}: {str(e)}")
 
+        # Show legend and tighten layout after all lines are plotted
+        plotter.ax.legend(loc='best')
+        plotter.fig.tight_layout()
         plotter.show()
 
     def plot_nodal_average_displacement(self):
         """
-        This method plots the average displacement of each node for each selected simulation.
-        It uses the analyzer's get_average_displacements method, which returns node_ids and their avg displacements.
-        It then plots a line for each simulation. The resulting plot helps me compare which nodes move more on average.
-        If no files selected, it warns me.
+        Plots the average displacement of each node for selected simulations.
+        Each simulation is plotted as a line with a unique color and label.
+        After plotting all simulations, a legend is shown on the best location.
         """
         files = self.get_selected_files()
         if not files:
@@ -2248,29 +2333,22 @@ class AnalysisVisualizer:
             grid=True,
             figure_size=(12, 6)
         )
-        legend_kwargs = {
-            'bbox_to_anchor': (1.15, 0.5),
-            'loc': 'center left',
-            'frameon': True,
-            'fancybox': True,
-            'shadow': True,
-            'fontsize': 10,
-            'title': 'Simulations'
-        }
 
+        # We'll plot all selected simulations on the same figure
+        # Each simulation line will have a label for easy identification.
         first_file = True
         files_to_plot = self.get_selected_files()
 
-        # goes through all items in the tree to maintain consistent order
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item)["values"]
             filename = values[0]
             color = values[4]
-
             file_path = next((p for p in files_to_plot if os.path.basename(p) == filename), None)
             if file_path:
                 data = self.loaded_files[file_path]
                 node_ids, avg_displacements = self.analyzer.get_average_displacements(file_path)
+
+                # Plot each simulation with a label and chosen color
                 plotter.plot(
                     node_ids,
                     avg_displacements,
@@ -2281,26 +2359,20 @@ class AnalysisVisualizer:
                     marker_style='o',
                     line_style='-',
                     line_width=1.5,
-                    legend_kwargs=legend_kwargs if not first_file else None,
                     **vars(plot_config)
                 )
                 first_file = False
 
+        # After plotting all lines, add a legend and adjust layout
+        plotter.ax.legend(loc='best')
+        plotter.fig.tight_layout()
         plotter.show()
 
     def plot_nodal_normalized_displacement(self):
         """
-        This method plots the normalized displacement of each node for each selected simulation.
-        It uses the analyzer's get_normalized_displacements method, which computes the average displacement per node
-        and then divides by the total number of nodes. This normalization ensures that if one simulation has more nodes
-        than another, the overall "waveform" of displacement doesn't get skewed by node count differences.
-
-        In other words, normalizing by the number of nodes makes the entire displacement curve more comparable
-        between simulations with different node counts. For example, if one simulation has 100 nodes and another 50,
-        dividing by the node count ensures we view the pattern of displacement on a similar scale.
-
-        If no files selected, it warns me. Otherwise, it plots a line for each simulation, each line showing
-        normalized displacement vs. node_id.
+        Plots the normalized displacement of each node for selected simulations.
+        Similar to average displacement plot, but node id values are normalized.
+        Each simulation line is labeled for easy comparison.
         """
         files = self.get_selected_files()
         if not files:
@@ -2310,38 +2382,27 @@ class AnalysisVisualizer:
         plotter = PlottingToolkit()
         plot_config = PlotConfig(
             title="Normalized Node Displacement Comparison",
-            xlabel="Node ID",
+            xlabel="Normalized Number of Nodes",
             ylabel="Normalized Displacement",
             grid=True,
             figure_size=(12, 6)
         )
-        legend_kwargs = {
-            'bbox_to_anchor': (1.15, 0.5),
-            'loc': 'center left',
-            'frameon': True,
-            'fancybox': True,
-            'shadow': True,
-            'fontsize': 10,
-            'title': 'Simulations'
-        }
 
         first_file = True
         files_to_plot = self.get_selected_files()
 
-        # goes through each simulation in the tree order
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item)["values"]
             filename = values[0]
             color = values[4]
-
             file_path = next((p for p in files_to_plot if os.path.basename(p) == filename), None)
             if file_path:
                 data = self.loaded_files[file_path]
-                # gets normalized displacements from the analyzer
-                node_ids, normalized_displacements = self.analyzer.get_normalized_displacements(file_path)
-                # plots this line representing normalized displacement for each node
+                node_ids, normalized_displacements = self.analyzer.get_normalized_amplitudes(file_path)
+                normalized_node_ids = node_ids / max(node_ids)
+                # Plot each simulation line with filename label and chosen color
                 plotter.plot(
-                    node_ids,
+                    normalized_node_ids,
                     normalized_displacements,
                     new_figure=first_file,
                     color=color,
@@ -2350,77 +2411,13 @@ class AnalysisVisualizer:
                     marker_style='o',
                     line_style='-',
                     line_width=1.5,
-                    legend_kwargs=legend_kwargs if not first_file else None,
                     **vars(plot_config)
                 )
                 first_file = False
 
-        plotter.show()
-
-    def compare_movement(self):
-        """
-        This method plots 3D trajectories of the nodes from selected simulations.
-        It retrieves each node's X, Y, Z positions over time and plots them in a 3D plot.
-        It can help visualize differences in movement patterns.
-        If no files are loaded, it shows a warning.
-        """
-        files = self.get_selected_files()
-        if not files:
-            messagebox.showwarning("Warning", "No simulation files loaded.")
-            return
-
-        plotter = PlottingToolkit()
-        plot_config = PlotConfig(
-            title="Movement Pattern Comparison",
-            xlabel="X Position",
-            ylabel="Y Position",
-            zlabel="Z Position",
-            is_3d=True,
-            view_preset=ViewPreset.ISOMETRIC,
-            interactive_3d=True,
-            show_view_controls=True,
-            show_animation_controls=True,
-            grid=True,
-            figure_size=(12, 8)
-        )
-        legend_kwargs = {
-            'bbox_to_anchor': (1.15, 0.5),
-            'loc': 'center left',
-            'frameon': True,
-            'fancybox': True,
-            'shadow': True,
-            'fontsize': 10,
-            'title': 'Simulations'
-        }
-
-        first_file = True
-        # goes through all items to preserve order
-        for item in self.file_tree.get_children():
-            values = self.file_tree.item(item)["values"]
-            filename = values[0]
-            color = values[4]
-            file_path = next((p for p in files if os.path.basename(p) == filename), None)
-            if file_path:
-                data = self.loaded_files[file_path]
-                summary = self.analyzer.get_simulation_summary(file_path)
-                num_nodes = summary['num_objects']
-
-                # adds a line plot for each node to show its 3D trajectory
-                for node in range(num_nodes):
-                    x, y, z = self.analyzer.get_object_trajectory(file_path, node)
-                    plotter.plot(
-                        x, y, z,
-                        new_figure=(first_file and node == 0),
-                        plot_type='line',
-                        color=color,
-                        label=f"{filename} - Node {node}" if node == 0 else None,
-                        alpha=0.5,
-                        line_width=1.5,
-                        legend_kwargs=legend_kwargs if node == num_nodes - 1 else None,
-                        **vars(plot_config)
-                    )
-                first_file = False
-
+        # Add legend and tighten layout after plotting all lines
+        plotter.ax.legend(loc='best')
+        plotter.fig.tight_layout()
         plotter.show()
 
     def analyze_frequencies(self):
@@ -2462,21 +2459,17 @@ class AnalysisVisualizer:
 
         If time_step or data is not valid, it shows an error. If everything is fine, it shows the results.
         """
-        # adds a try-except to gracefully handle errors
         try:
             data = self.loaded_files[file_path]
             summary = self.analyzer.get_simulation_summary(file_path)
             num_nodes = summary['num_objects']
 
-            # adds code to get trajectories for each node and compute displacements
-            # Here, I pick the first node to find time_step from 'Time' column
             df = self.analyzer.simulations[file_path]
             time_step = df['Time'].diff().mean()
             if time_step <= 0:
                 messagebox.showerror("Error", "Invalid or zero time step in data.")
                 return
 
-            # adds lists to store displacement data for each node
             node_displacements = []
             for node_id in range(num_nodes):
                 x, y, z = self.analyzer.get_object_trajectory(file_path, node_id)
@@ -2484,65 +2477,50 @@ class AnalysisVisualizer:
                 initial_pos = positions[0]
                 displacements = np.linalg.norm(positions - initial_pos, axis=1)
                 node_displacements.append(displacements)
-
             node_displacements = np.array(node_displacements)
             n_samples = node_displacements.shape[1]
 
-            # adds frequency computation using FFT
             freqs = np.fft.fftfreq(n_samples, time_step)[:n_samples // 2]
-            # excludes the endpoints to avoid including DC or Nyquist if needed
-            # Typically we might remove just the zero and the last bin to avoid edge issues
-            # Here we slice [1:-1] to remove both ends and focus on main range
             freqs = freqs[1:-1]
-
-            # adds computation of FFT and normalization
             fft_matrix = []
             for disp in node_displacements:
                 fft_result = np.fft.fft(disp)
                 half_fft = np.abs(fft_result[:n_samples // 2])
-                half_fft = half_fft[1:-1]  # removes endpoints
+                half_fft = half_fft[1:-1]
                 fft_matrix.append(half_fft)
-
             fft_matrix = np.array(fft_matrix)
             max_val = np.max(fft_matrix)
             if max_val > 0:
                 fft_matrix = fft_matrix / max_val
 
-            # sets up a PlottingToolkit instance for the heatmap plot
+            # Heatmap configuration
             plotter = PlottingToolkit()
             heatmap_config = PlotConfig(
                 title="Frequency Content vs Node Position (Endpoints Excluded)",
                 xlabel="Frequency (Hz)",
                 ylabel="Node Number",
                 grid=True,
-                figure_size=(12, 10)
+                figure_size=(12, 10),
             )
-
             fig1, ax1 = plotter.create_figure(heatmap_config)
-            # adds a heatmap (pcolormesh) of fft_matrix with freqs as x and nodes as y
             im = ax1.pcolormesh(
-                freqs,  # frequency axis
-                np.arange(num_nodes),  # node axis
-                fft_matrix,  # magnitude data
+                freqs,
+                np.arange(num_nodes),
+                fft_matrix,
                 shading='auto',
                 cmap='viridis'
             )
             fig1.colorbar(im, ax=ax1, label='Normalized Magnitude')
 
-            # adds vertical lines or other markers if needed
-            # Here we just show the heatmap
-
-            # adds another plot showing the average spectrum
-            # The average is taken across nodes
+            # Average spectrum plot
             average_spectrum = np.mean(fft_matrix, axis=0)
-
             plotter2 = PlottingToolkit()
             spectrum_config = PlotConfig(
                 title="Average Frequency Spectrum (Endpoints Excluded)",
                 xlabel="Frequency (Hz)",
                 ylabel="Normalized Magnitude",
                 grid=True,
-                figure_size=(12, 6)
+                figure_size=(12, 6),
             )
 
             plotter2.plot(
@@ -2556,38 +2534,42 @@ class AnalysisVisualizer:
                 **vars(spectrum_config)
             )
 
-            # adds peak detection or annotations if desired
-            # identifies top peaks in the average spectrum
+            # Identify top peaks
             peak_indices = np.argsort(average_spectrum)[-5:][::-1]
             peak_freqs = freqs[peak_indices]
             peak_mags = average_spectrum[peak_indices]
 
-            # adds a summary text box to highlight dominant frequencies
-            summary_text = "Dominant Frequencies:\n─────────────────\n"
-            for i, (freq, mag) in enumerate(zip(peak_freqs, peak_mags)):
-                summary_text += f"{i + 1}. {freq:.1f} Hz (mag: {mag:.2f})\n"
+            for freq, mag in zip(peak_freqs, peak_mags):
                 plotter2.ax.plot(freq, mag, 'ro')
                 plotter2.ax.text(
                     freq, mag + 0.05,
                     f'{freq:.1f} Hz',
-                    horizontalalignment='center'
+                    ha='center'
                 )
 
-            # adds a text box on the plotter2
+            # Summary text for dominant frequencies
+            summary_text = "Dominant Frequencies:\n"
+            for i, (pf, pm) in enumerate(zip(peak_freqs, peak_mags)):
+                summary_text += f"{i + 1}: {pf:.1f} Hz ({pm:.2f})\n"
+
+            # Place text box inside plot area, align properly, and adjust layout
             plotter2.ax.text(
-                1.02, 0.95,
+                0.95, 0.95,
                 summary_text,
                 transform=plotter2.ax.transAxes,
-                fontsize=10,
-                verticalalignment='top',
-                bbox=dict(
-                    facecolor='white',
-                    edgecolor='gray',
-                    alpha=0.8,
-                    pad=8,
-                    boxstyle='round'
-                )
+                fontsize=9,
+                va='top',
+                ha='right',
+                bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, boxstyle='round')
             )
+
+            # Show legends and adjust layout so nothing is cut off
+            plotter2.ax.legend(loc='upper left', frameon=True)
+            fig1.tight_layout()
+            plotter2.fig.tight_layout()
+            # Adjusts to ensure no cutting off
+            plotter2.fig.subplots_adjust(left=.1,right=0.9,top=0.9,bottom=0.1)
+            fig1.subplots_adjust(left=.1,right=0.9,top=0.9,bottom=0.1)
 
             plotter.show()
             plotter2.show()
@@ -2613,27 +2595,13 @@ class AnalysisVisualizer:
 
     def plot_harmonic_correlation(self, files):
         """
-        This method analyzes how the displacement patterns correlate with simple harmonic modes.
-        It takes one or more selected simulations and for each one:
-        - retrieves harmonic correlation data from the analyzer
-        - plots a bar chart showing the correlation of each harmonic
-        - annotates the bars and highlights the top 3 harmonics
-
-        I do this by:
-        - looping through each selected file
-        - calling analyzer.get_harmonic_correlation to get harmonics and correlation percentages
-        - plotting these correlations as bars
-        - adding text annotations for dominant harmonics
-
-        If multiple files are selected, it plots them in separate figures, each showing a bar chart.
+        For each selected simulation, plots a bar chart of harmonic correlations.
+        Shows all harmonics. Then determines the top 3 dominant harmonics and adds a small annotation.
+        Ensures that legends and annotations are placed neatly without cutting off.
         """
-        files = self.get_selected_files()
-        if not files:
-            messagebox.showwarning("Warning", "No simulation files loaded.")
-            return
-
         plotter = PlottingToolkit()
         num_files = len(files)
+        first_file = True
 
         for idx, file_path in enumerate(files):
             data = self.loaded_files[file_path]
@@ -2641,72 +2609,74 @@ class AnalysisVisualizer:
 
             harmonics, correlations = self.analyzer.get_harmonic_correlation(file_path)
 
-            # adds a plot configuration for a bar chart
+            # Retrieve assigned color
+            color = None
+            for item in self.file_tree.get_children():
+                values = self.file_tree.item(item)["values"]
+                if values[0] == filename:
+                    color = values[4]
+                    break
+            if color is None:
+                color = 'steelblue'
+
+            # Plot configuration for harmonic analysis
             plot_config = PlotConfig(
                 title=f"Harmonic Analysis - {filename}",
                 xlabel="Harmonic Number",
                 ylabel="Correlation (%)",
                 grid=True,
-                figure_size=(15, 5 * ((num_files + 1) // 2))
+                figure_size=(15, 5)
             )
 
-            # plots a bar chart of harmonic correlations
+            # Plot all harmonics as a bar chart with label
             plotter.plot(
                 harmonics,
                 correlations,
                 plot_type='bar',
-                color='steelblue',
-                alpha=0.7,
-                new_figure=(idx == 0),
+                color=color,
+                label=filename,
+                new_figure=first_file,
                 **vars(plot_config)
             )
+            first_file = False
 
-            # adds annotations for each bar
-            for i, correlation in enumerate(correlations):
+            # Add text on each bar
+            for i, cval in enumerate(correlations):
                 plotter.ax.text(
-                    i + 1, correlation + 1,
-                    f'{correlation:.1f}%',
-                    horizontalalignment='center',
-                    verticalalignment='bottom',
+                    harmonics[i],
+                    cval + 1,
+                    f'{cval:.1f}%',
+                    ha='center',
+                    va='bottom',
                     fontsize=9
                 )
 
-            # identifies top 3 harmonics
+            # Identify top 3 harmonics
             sorted_indices = np.argsort(correlations)[::-1]
+            top_indices = sorted_indices[:3]
             summary_text = (
-                f"Dominant Harmonics:\n"
-                f"1st: {harmonics[sorted_indices[0]]}th ({correlations[sorted_indices[0]]:.1f}%)\n"
-                f"2nd: {harmonics[sorted_indices[1]]}th ({correlations[sorted_indices[1]]:.1f}%)\n"
-                f"3rd: {harmonics[sorted_indices[2]]}th ({correlations[sorted_indices[2]]:.1f}%)"
+                "Dominant Harmonics:\n"
+                f"1: {harmonics[top_indices[0]]}th ({correlations[top_indices[0]]:.1f}%)\n"
+                f"2: {harmonics[top_indices[1]]}th ({correlations[top_indices[1]]:.1f}%)\n"
+                f"3: {harmonics[top_indices[2]]}th ({correlations[top_indices[2]]:.1f}%)"
             )
 
-            # adds a text box with summary info
+            # Place the summary text as a small annotation box
             plotter.ax.text(
-                1.02, 0.95,
+                0.95, 0.95,
                 summary_text,
                 transform=plotter.ax.transAxes,
-                fontsize=10,
-                verticalalignment='top',
-                bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, pad=8, boxstyle='round')
+                fontsize=9,
+                va='top',
+                ha='right',
+                bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, boxstyle='round')
             )
 
-            # adjusts plot bounds if needed
-            plotter.update_plot_bounds(
-                x_range=(0.5, len(harmonics) + 0.5),
-                y_range=(0, max(correlations) * 1.15)
-            )
-
-            # If multiple files, we just keep adding to the plotter (or show after loop)
-            # But since we might have multiple files, we rely on separate figures or same figure repeated
-            # If we use new_figure=(idx==0), only the first file gets a new figure, others plot on same figure?
-            # For clarity, let's assume each file gets its own figure by re-calling show after each.
-            # But original code might have done differently. Let's show after the loop:
-            # Actually, since we set new_figure=(idx == 0), first file creates figure, others plot on the same figure.
-            # That might overlap. Let's just trust this logic for now.
-
-        if plotter.fig:
-            plotter.fig.tight_layout()
+        # Show a legend for all files and adjust layout
+        plotter.ax.legend(loc='upper left', frameon=True)
+        plotter.fig.tight_layout()
         plotter.show()
+
     def on_closing(self):
         """
         This method runs when the user closes the analysis window.
@@ -2715,8 +2685,3 @@ class AnalysisVisualizer:
         self.root.destroy()
         if self.main_root:
             self.main_root.deiconify()
-
-
-
-
-
