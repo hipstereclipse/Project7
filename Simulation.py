@@ -83,9 +83,15 @@ class StringSimulation:
 
     def setup_physics(self) -> PhysicsEngine:
         """Initialize physics engine with simulation parameters."""
+        # If we are in string_params mode, use computed_k. Otherwise use the regular spring_constant.
+        if self.params.parameter_mode == 'string_params':
+            k_value = self.params.computed_k
+        else:
+            k_value = self.params.spring_constant
+
         return PhysicsEngine(
             objects=self.masses,
-            k=self.params.spring_constant,
+            k=k_value,
             equilibrium_length=self.params.equilibrium_length,
             time=0.0,
             dt=self.params.dt,
