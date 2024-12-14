@@ -71,6 +71,66 @@ class PlotConfig:
     subplot_left_pad: float = 0.1
     subplot_right_pad: float = 0.9
 
+    spacing: dict = field(default_factory=lambda: {
+        'margins': {
+            'left': None,  # If None, uses subplot_left_pad
+            'right': None,  # If None, uses subplot_right_pad
+            'top': None,  # If None, uses subplot_top_pad
+            'bottom': None,  # If None, uses subplot_bottom_pad
+            'wspace': 0.2,  # Width spacing between subplots
+            'hspace': 0.2  # Height spacing between subplots
+        },
+        'elements': {
+            'title_spacing': None,  # If None, uses title_pad
+            'xlabel_spacing': None,  # If None, uses xlabel_pad
+            'ylabel_spacing': None,  # If None, uses ylabel_pad
+            'zlabel_spacing': None,  # If None, uses zlabel_pad
+            'legend_spacing': None,  # If None, uses legend_pad
+            'tick_spacing': None  # If None, uses tick_pad
+        }
+    })
+    legend_config: dict = field(default_factory=lambda: {
+        'position': None,  # If None, uses legend_position
+        'anchor': None,  # Custom anchor point (x, y)
+        'columns': 1,  # Number of columns
+        'fontsize': 10,  # Font size
+        'framewidth': 1,  # Frame width
+        'framealpha': 0.8,  # Frame transparency
+        'spacing': 0.5,  # Entry spacing
+        'title_fontsize': 12  # Title font size
+    })
+
+    def get_margin(self, side: str) -> float:
+        """Gets margin value, prioritizing new spacing over legacy values."""
+        margin = self.spacing['margins'][side]
+        if margin is not None:
+            return margin
+
+        # Map to legacy values
+        legacy_map = {
+            'left': self.subplot_left_pad,
+            'right': self.subplot_right_pad,
+            'top': self.subplot_top_pad,
+            'bottom': self.subplot_bottom_pad
+        }
+        return legacy_map.get(side, 0.1)
+
+    def get_element_spacing(self, element: str) -> float:
+        """Gets element spacing value, prioritizing new spacing over legacy values."""
+        spacing = self.spacing['elements'][f'{element}_spacing']
+        if spacing is not None:
+            return spacing
+
+        # Map to legacy values
+        legacy_map = {
+            'title': self.title_pad,
+            'xlabel': self.xlabel_pad,
+            'ylabel': self.ylabel_pad,
+            'zlabel': self.zlabel_pad,
+            'legend': self.legend_pad,
+            'tick': self.tick_pad
+        }
+        return legacy_map.get(element, 5.0)
 
 class PlottingToolkit:
     """
@@ -161,34 +221,36 @@ class PlottingToolkit:
         else:
             self.ax = self.fig.add_subplot(111)
 
-        # Adjustable subplot padding so titles and labels aren’t cramped against the edges.
-        plt.subplots_adjust(
-            top=config.subplot_top_pad,
-            bottom=config.subplot_bottom_pad,
-            left=config.subplot_left_pad,
-            right=config.subplot_right_pad
+        # Applies margins
+        self.fig.subplots_adjust(
+            left=config.get_margin('left'),
+            right=config.get_margin('right'),
+            top=config.get_margin('top'),
+            bottom=config.get_margin('bottom'),
+            wspace=config.spacing['margins']['wspace'],
+            hspace=config.spacing['margins']['hspace']
         )
 
-        # If I have a title or axis labels, set them now along with their padding.
+        # Sets title and labels with spacing
         if config.title:
-            self.ax.set_title(config.title, pad=config.title_pad)
+            self.ax.set_title(config.title, pad=config.get_element_spacing('title'))
         if config.xlabel:
-            self.ax.set_xlabel(config.xlabel, labelpad=config.xlabel_pad)
+            self.ax.set_xlabel(config.xlabel, labelpad=config.get_element_spacing('xlabel'))
         if config.ylabel:
-            self.ax.set_ylabel(config.ylabel, labelpad=config.ylabel_pad)
+            self.ax.set_ylabel(config.ylabel, labelpad=config.get_element_spacing('ylabel'))
 
-        # For 2D plots, I might want non-linear scales. I can set those here.
+        # Configures ticks
+        self.ax.tick_params(pad=config.get_element_spacing('tick'))
+
+        # Sets scales for 2D plots
         if not config.is_3d:
             self.ax.set_xscale(config.xscale)
             self.ax.set_yscale(config.yscale)
 
-        # Some padding for ticks so they don't collide with other elements.
-        self.ax.tick_params(pad=config.tick_pad)
-
-        # Turn on the grid if requested, to help read values more easily.
+        # Configures grid
         self.ax.grid(config.grid, alpha=0.3)
-        self.fig.canvas.draw_idle()
 
+        self.fig.canvas.draw_idle()
         return self.fig, self.ax
 
     def plot(self, x, y, z=None, new_figure=True, legend_kwargs=None, **kwargs):
@@ -281,6 +343,34 @@ class PlottingToolkit:
                 plot_object.set_offsets(np.column_stack([x, y]))
             else:
                 plot_object.set_data(x, y)
+
+    def update_spacing(self, config: PlotConfig):
+        """Updates spacing and layout based on configuration."""
+        if not self.fig or not self.ax:
+            return
+
+        # Update margins
+        self.fig.subplots_adjust(
+            left=config.get_margin('left'),
+            right=config.get_margin('right'),
+            top=config.get_margin('top'),
+            bottom=config.get_margin('bottom'),
+            wspace=config.spacing['margins']['wspace'],
+            hspace=config.spacing['margins']['hspace']
+        )
+
+        # Update element spacing
+        if self.ax.get_title():
+            self.ax.set_title(self.ax.get_title(), pad=config.get_element_spacing('title'))
+        if self.ax.get_xlabel():
+            self.ax.set_xlabel(self.ax.get_xlabel(), labelpad=config.get_element_spacing('xlabel'))
+        if self.ax.get_ylabel():
+            self.ax.set_ylabel(self.ax.get_ylabel(), labelpad=config.get_element_spacing('ylabel'))
+        if hasattr(self.ax, 'get_zlabel') and self.ax.get_zlabel():
+            self.ax.set_zlabel(self.ax.get_zlabel(), labelpad=config.get_element_spacing('zlabel'))
+
+        self.ax.tick_params(pad=config.get_element_spacing('tick'))
+        self.fig.canvas.draw_idle()
 
     def add_text(self, x, y, text, **kwargs):
         """
@@ -2350,6 +2440,10 @@ class AnalysisVisualizer:
         plotter = PlottingToolkit()
         plot_config = PlotConfig(
             title="Movement Pattern Comparison",
+            title_pad=10,  # Padding between title and plot
+            subplot_top_pad=0.90,  # Reduced to move title down
+            subplot_right_pad=0.8,  # Leaves space for legend on the right
+            subplot_bottom_pad=0.15,  # Increases bottom padding
             xlabel="X Position",
             ylabel="Y Position",
             zlabel="Z Position",
@@ -2394,7 +2488,7 @@ class AnalysisVisualizer:
                 first_file = False
 
         # After all are plotted, show legend and adjust layout to avoid cutoff
-        plotter.ax.legend(loc='best', frameon=True)
+        plotter.ax.legend(loc='right', bbox_to_anchor=(1.5,0.5), frameon=True)
         plotter.fig.tight_layout()
         plotter.show()
 
