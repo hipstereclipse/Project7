@@ -884,7 +884,7 @@ class StringSimulationSetup:
 
     def validate_parameters(self):
         """
-        Make sure all the user inputs are valid (e.g., no negative time steps).
+        Makes sure all the user inputs are valid (e.g., no negative time steps).
         If invalid, show an error message. Otherwise, return True.
         """
         try:
@@ -978,10 +978,10 @@ class SimulationVisualizer:
         self.original_velocities = [obj.velocity.copy() for obj in objects]
         self.initial_physics_time = physics_model.time
 
-        # Setup a ForceHandler for external forces.
+        # Setups a ForceHandler for external forces.
         self.force_handler = ForceHandler(physics_model, objects, dark_mode)
 
-        # Initialize PlottingToolkit for controlling and drawing the scene.
+        # Initializes PlottingToolkit for controlling and drawing the scene.
         self.plotter = PlottingToolkit()
 
         # Some default camera settings so I have a good starting viewpoint.
@@ -1010,7 +1010,7 @@ class SimulationVisualizer:
 
     def setup_visualization(self):
         """
-        Actually build the figure, axes, and initial plots. Add text elements for force/camera info as well.
+        Actually builds the figure, axes, and initializes plots. Add text elements for force/camera info as well.
         """
         plt.style.use('dark_background' if self.dark_mode else 'default')
         self.fig = plt.figure(figsize=(12, 10))
@@ -1050,7 +1050,7 @@ class SimulationVisualizer:
 
     def setup_plots(self):
         """
-        Create a scatter point for each mass and a line connecting consecutive masses to represent the string segments.
+        Creates a scatter point for each mass and a line connecting consecutive masses to represent the string segments.
         """
         for i, obj in enumerate(self.objects):
             scatter = self.ax.scatter(
