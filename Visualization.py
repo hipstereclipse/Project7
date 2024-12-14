@@ -345,11 +345,15 @@ class PlottingToolkit:
                 plot_object.set_data(x, y)
 
     def update_spacing(self, config: PlotConfig):
-        """Updates spacing and layout based on configuration."""
+        """
+        Updates subplot margins and element spacing based on the configuration.
+        Applies margins with subplots_adjust. Sets title, label, and tick spacing.
+        Redraws the canvas to reflect changes immediately.
+        """
         if not self.fig or not self.ax:
             return
 
-        # Update margins
+        # Applies margins from config without relying on tight_layout.
         self.fig.subplots_adjust(
             left=config.get_margin('left'),
             right=config.get_margin('right'),
@@ -359,9 +363,11 @@ class PlottingToolkit:
             hspace=config.spacing['margins']['hspace']
         )
 
-        # Update element spacing
+        # Updates title spacing if the title exists.
         if self.ax.get_title():
             self.ax.set_title(self.ax.get_title(), pad=config.get_element_spacing('title'))
+
+        # Updates label spacing if labels exist.
         if self.ax.get_xlabel():
             self.ax.set_xlabel(self.ax.get_xlabel(), labelpad=config.get_element_spacing('xlabel'))
         if self.ax.get_ylabel():
@@ -369,7 +375,10 @@ class PlottingToolkit:
         if hasattr(self.ax, 'get_zlabel') and self.ax.get_zlabel():
             self.ax.set_zlabel(self.ax.get_zlabel(), labelpad=config.get_element_spacing('zlabel'))
 
+        # Updates tick padding.
         self.ax.tick_params(pad=config.get_element_spacing('tick'))
+
+        # Redraws the figure to apply changes.
         self.fig.canvas.draw_idle()
 
     def add_text(self, x, y, text, **kwargs):
@@ -2427,23 +2436,19 @@ class AnalysisVisualizer:
 
     def compare_movement(self):
         """
-        Plots 3D trajectories of the nodes from selected simulations to compare movement patterns.
-        Each simulation gets its own color from the treeview, and all are shown in one figure.
-        After plotting, a single legend is displayed and layout is adjusted so it doesn't cut off.
+        Plots 3D trajectories of selected simulations to compare movement patterns.
+        Uses a 3D isometric view and uses fig.suptitle to set the title at the figure level.
+        Ensures that a figure and axes are created before trying to adjust spacing or set the title.
         """
         files = self.get_selected_files()
         if not files:
             messagebox.showwarning("Warning", "No simulation files loaded.")
             return
 
-        # Create a 3D plot for movement pattern comparison
+        # Creates a 3D plot. We explicitly create the figure before adjusting spacing or setting the suptitle.
         plotter = PlottingToolkit()
         plot_config = PlotConfig(
             title="Movement Pattern Comparison",
-            title_pad=10,  # Padding between title and plot
-            subplot_top_pad=0.90,  # Reduced to move title down
-            subplot_right_pad=0.8,  # Leaves space for legend on the right
-            subplot_bottom_pad=0.15,  # Increases bottom padding
             xlabel="X Position",
             ylabel="Y Position",
             zlabel="Z Position",
@@ -2453,13 +2458,36 @@ class AnalysisVisualizer:
             show_view_controls=True,
             show_animation_controls=True,
             grid=True,
-            figure_size=(12, 8)
+            figure_size=(12, 8),
+            spacing={
+                'margins': {
+                    'left': 0.1,
+                    'right': 0.9,
+                    'top': 0.90,
+                    'bottom': 0.15,
+                    'wspace': 0.2,
+                    'hspace': 0.2
+                },
+                'elements': {
+                    'title_spacing': -30,
+                    'xlabel_spacing': 10,
+                    'ylabel_spacing': 10,
+                    'zlabel_spacing': 10,
+                    'legend_spacing': 0.1,
+                    'tick_spacing': 5
+                }
+            }
         )
 
-        # We'll store plot handles to ensure we have proper legends at the end
+        plotter.create_figure(plot_config)
+
+        # Now that fig and ax exist, we can update spacing.
+        plotter.update_spacing(plot_config)
+
         first_file = True
         files_to_plot = self.get_selected_files()
 
+        # Plots node trajectories. Labels only the first line of each simulation.
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item)["values"]
             filename = values[0]
@@ -2469,15 +2497,13 @@ class AnalysisVisualizer:
                 data = self.loaded_files[file_path]
                 summary = self.analyzer.get_simulation_summary(file_path)
                 num_nodes = summary['num_objects']
-
-                # Plot a line for each node to show its trajectory
                 for node in range(num_nodes):
                     x, y, z = self.analyzer.get_object_trajectory(file_path, node)
-                    # Only label the first node of each simulation in the legend for cleanliness
-                    label = f"{filename}" if node == 0 else None
+                    label = filename if node == 0 else None
+                    # Now that figure and axes exist, we can plot.
                     plotter.plot(
                         x, y, z,
-                        new_figure=(first_file and node == 0),
+                        new_figure=False,  # We already created the figure above.
                         plot_type='line',
                         color=color,
                         label=label,
@@ -2487,9 +2513,7 @@ class AnalysisVisualizer:
                     )
                 first_file = False
 
-        # After all are plotted, show legend and adjust layout to avoid cutoff
-        plotter.ax.legend(loc='right', bbox_to_anchor=(1.5,0.5), frameon=True)
-        plotter.fig.tight_layout()
+        plotter.ax.legend(loc='right', bbox_to_anchor=(1.6, 0.5), frameon=True)
         plotter.show()
 
     def compare_stationary(self):
