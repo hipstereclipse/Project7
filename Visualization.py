@@ -553,6 +553,7 @@ class SimulationParameters:
     """
     num_segments: int = 25
     spring_constant: float = 1000.0
+    custom_equilibrium_length: float = field(default=None)
     mass: float = 0.01
     dt: float = 0.0001
     start_point: np.ndarray = field(default_factory=lambda: np.array([-1.0, 0.0, 0.0]))
@@ -563,8 +564,15 @@ class SimulationParameters:
 
     @property # Sets the default length of the equilibrium length based on length of segment (end points)
     def equilibrium_length(self) -> float:
+        if self.custom_equilibrium_length is not None:
+            return self.custom_equilibrium_length
         total_length = np.linalg.norm(self.end_point - self.start_point)
         return total_length / self.num_segments
+
+    @equilibrium_length.setter
+    def equilibrium_length(self, value: float):
+        """Set a custom equilibrium length."""
+        self.custom_equilibrium_length = value
 
 class ForceHandler:
     """
@@ -581,10 +589,10 @@ class ForceHandler:
         self.continuous = False
         self.duration = 0.01
         self.duration_remaining = 0.01
-        self.amplitude = 10.0
+        self.amplitude = 1.0
         self.selected_object = len(objects) // 2
         self.gaussian_width = len(self.objects) / 8.0
-        self.sinusoidal_frequency = 1.0  # Frequency for sinusoidal force
+        self.sinusoidal_frequency = 10.0  # Frequency for sinusoidal force
 
         self.types = {
             'Single Mass': lambda t, x: np.array([0.0, 0.0, 1.0]),
@@ -806,12 +814,11 @@ class StringSimulationSetup:
         ttk.Label(props_frame, text="Equilibrium length (m):").grid(row=3, column=0, padx=5, pady=5)
         eq_length_entry = ttk.Entry(props_frame, textvariable=self.equilibrium_length_var, width=10)
         eq_length_entry.grid(row=3, column=1, padx=5, pady=5)
-        eq_length_entry.config(state='readonly')  # Make it read-only since it's calculated
 
         # Add tooltip or help text for equilibrium length
         help_label = ttk.Label(
             props_frame,
-            text="(Natural unstretched length of each spring)\n(Automatically calculated from string endpoints)",
+            text="(Initial value natural unstretched length of each spring [r])\nFollows the relationship T=k(r-r0) [Newtons].",
             font=("Arial", 8),
             foreground="gray"
         )
@@ -910,7 +917,6 @@ class StringSimulationSetup:
             return False
 
     def get_parameters(self):
-        """Assemble and return a SimulationParameters object from user input."""
         if not self.validate_parameters():
             return None
 
@@ -921,9 +927,10 @@ class StringSimulationSetup:
             dt=self.dt_var.get(),
             integration_method=self.integration_var.get(),
             applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
-            equilibrium_length=self.equilibrium_length_var.get(),
-            dark_mode=self.dark_mode_var.get()
+            dark_mode=self.dark_mode_var.get(),
+            custom_equilibrium_length=self.equilibrium_length_var.get()  # Set it directly in constructor
         )
+
         return params
 
     def start_simulation(self):
@@ -940,7 +947,8 @@ class StringSimulationSetup:
             dt=self.dt_var.get(),
             integration_method=self.integration_var.get(),
             applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
-            dark_mode=self.dark_mode_var.get()
+            dark_mode=self.dark_mode_var.get(),
+            custom_equilibrium_length = self.equilibrium_length_var.get()
         )
         self.root.quit()
         self.root.destroy()
@@ -1110,7 +1118,7 @@ class SimulationVisualizer:
 
         # Create and place multiple buttons for play/pause, reset, view cycles, zoom, theme, and saving data
         button_configs = [
-            ('play_button', 'Pause', 0.24),
+            ('play_button', 'Start', 0.24),
             ('reset_button', 'Reset', 0.35),
             ('view_button', 'View: Default', 0.46),
             ('zoom_button', 'Zoom: Fit All', 0.57),
@@ -1150,7 +1158,7 @@ class SimulationVisualizer:
 
         # Calculate valid slider range for object selection
         min_object = 1  # Skip first object (index 0) as it's usually fixed
-        max_object = max(2, len(self.objects) - 2)  # Ensure at least 2 for slider range, skip last object
+        max_object = max(1,len(self.objects) - 1)
         initial_object = min(max_object, max(min_object, self.force_handler.selected_object))
 
         # Create object selection slider with guaranteed valid range
@@ -1161,6 +1169,7 @@ class SimulationVisualizer:
             valinit=initial_object,
             valfmt='%d'
         )
+        self.object_slider.on_changed(self.set_selected_object)
 
         # Slider for force amplitude
         self.amplitude_slider = Slider(
@@ -1198,7 +1207,7 @@ class SimulationVisualizer:
         self.frequency_slider = Slider(
             self.frequency_slider_ax,
             'Frequency',
-            0.1, 999.9,
+            0.1, 99.9,
             valinit=self.force_handler.sinusoidal_frequency,
             valfmt='%.2f'
         )
@@ -1348,10 +1357,10 @@ class SimulationVisualizer:
         dt_per_frame = self.physics.dt * self.iteration_count
         state = 'PAUSED' if self.paused else 'RUNNING'
 
-        if self.force_handler.active:
-            duration_text = f"{self.force_handler.duration_remaining:.2f}s remaining"
-        elif self.force_handler.continuous:
+        if self.force_handler.continuous:
             duration_text = f"Continuous"
+        elif self.force_handler.active:
+            duration_text = f"{self.force_handler.duration_remaining:.2f}s remaining"
         else:
             duration_text = f"Duration set to {self.force_handler.duration:.2f}s"
 
@@ -1376,6 +1385,7 @@ class SimulationVisualizer:
 
         force_text = (
             f"Forces on Mass {self.force_handler.selected_object}:\n"
+            f"Tension on String: {self.physics.tension}N\n"
             f"─────────────────────────\n"
             f"External Force:\n"
             f"  X: {external_force[0]:8.3f} N\n"

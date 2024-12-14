@@ -52,11 +52,14 @@ class StringSimulation:
         # off a calculation of the end points
         equilibrium_length = self.params.equilibrium_length
 
-        # Create masses along the string
+        # Calculate positions of masses along the string
         for i in range(self.params.num_segments + 1):
             # Calculate position as linear interpolation between start and end points
             t = i / self.params.num_segments
             position = (1 - t) * self.params.start_point + t * self.params.end_point
+
+            # Reverses the object ID assignment for the sake of lining up better with the slider.
+            reversed_id = self.params.num_segments - i
 
             # Create mass object with initial conditions
             mass = SimulationObject(
@@ -66,10 +69,14 @@ class StringSimulation:
                 vx=0.0, vy=0.0, vz=0.0,
                 ax=0.0, ay=0.0, az=0.0,
                 mass=self.params.mass,
-                obj_id=i,
-                pinned=(i == 0 or i == self.params.num_segments)  # Pin the ends
+                obj_id=reversed_id,  # Use the reversed ID
+                pinned=(i == 0 or i == self.params.num_segments)  # Pin the ends still determined by position
             )
             masses.append(mass)
+
+        # Sorts the masses by their object ID to maintain consistent ordering since I flipped them
+        # This ensures that the physics engine will receive them in the correct order
+        masses.sort(key=lambda m: m.obj_id)
 
         return masses, equilibrium_length
 
@@ -78,9 +85,11 @@ class StringSimulation:
         return PhysicsEngine(
             objects=self.masses,
             k=self.params.spring_constant,
-            equilibrium_length=self.equilibrium_length,
+            equilibrium_length=self.params.equilibrium_length,
             time=0.0,
-            dt=self.params.dt
+            dt=self.params.dt,
+            start_point=self.params.start_point,
+            end_point=self.params.end_point
         )
 
     def setup_visualization(self) -> SimulationVisualizer:

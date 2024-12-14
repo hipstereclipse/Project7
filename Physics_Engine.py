@@ -8,7 +8,7 @@ class PhysicsEngine:
     """Physics engine for string simulation using Hooke's Law."""
 
     def __init__(self, objects: List[SimulationObject], k: float, equilibrium_length: float, time: float,
-                 dt: float):
+                 dt: float, start_point: np.ndarray, end_point: np.ndarray):
         """
         Initialize the physics engine with simulation parameters.
 
@@ -20,9 +20,13 @@ class PhysicsEngine:
             dt: Simulation timestep for numerical integration.
         """
         # Store the core simulation parameters
+        print("Physics engine initialized with r0: ", equilibrium_length)
         self.objects = objects  # List of masses (each a SimulationObject instance)
         self.k = k  # Spring constant
         self.equilibrium_length = equilibrium_length  # Natural spring length
+        self.start_point = start_point
+        self.end_point = end_point
+        self.tension = self.calculate_tension()
         self.time = time  # Current simulation time
         self.dt = dt  # Timestep for simulation
         self.simulation_started = False  # Flag to track if simulation has started
@@ -37,6 +41,7 @@ class PhysicsEngine:
 
         # Initialize the data recorder
         self.data_recorder = SimulationDataRecorder(len(objects))
+
 
     def apply_force(self, obj_id: int, force: np.ndarray, duration: float = None):
         """
@@ -100,6 +105,9 @@ class PhysicsEngine:
 
         Returns:
             The force vector acting on the first mass due to the spring.
+
+        Compute the spring force between two connected masses using Hooke's Law.
+        F = -k(|x2-x1| - L0)(x2-x1)/|x2-x1| where L0 is equilibrium length
         """
         separation = pos2 - pos1
         current_length = np.linalg.norm(separation)
@@ -108,7 +116,22 @@ class PhysicsEngine:
             return np.zeros(3)
 
         unit_vector = separation / current_length
-        force_magnitude = self.k * (current_length - self.equilibrium_length)
+        # How much the spring is stretched/compressed from equilibrium
+        displacement = current_length - self.equilibrium_length
+        force_magnitude = self.k * displacement
+
+        # Debug info to verify force calculation
+        if hasattr(self, 'debug_counter'):
+            self.debug_counter += 1
+            if self.debug_counter % 1000 == 0:  # Print every 1000th calculation
+                print(f"Spring force calculation:")
+                print(f"Current length: {current_length:.6f}")
+                print(f"Equilibrium length: {self.equilibrium_length:.6f}")
+                print(f"Displacement from equilibrium: {displacement:.6f}")
+                print(f"Force magnitude: {force_magnitude:.2f}")
+        else:
+            self.debug_counter = 0
+
         return force_magnitude * unit_vector
 
     def compute_acceleration(self, obj_index: int) -> np.ndarray:
@@ -136,6 +159,30 @@ class PhysicsEngine:
             total_force += self.external_forces[obj.obj_id]
 
         return total_force / obj.mass
+
+    def calculate_tension(self):
+        """
+        Calculate the tension on the string based on the equilibrium length, spring constant, and custom equilibrium length.
+
+        Returns:
+            float: The calculated tension on the string.
+        """
+        # Calculate total length based on start and end positions
+        total_length = np.linalg.norm(self.end_point - self.start_point)
+
+        # Determine the equilibrium length
+        if self.equilibrium_length is not None:
+            equilibrium_length = self.equilibrium_length
+        else:
+            equilibrium_length = total_length / len(self.objects)
+
+        # Calculate displacement from equilibrium length
+        displacement = total_length - equilibrium_length
+
+        # Apply Hooke's law to calculate tension
+        tension = self.k * displacement
+
+        return tension
 
     def start_simulation(self):
         """Start the simulation timer if not already started."""
