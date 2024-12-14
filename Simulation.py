@@ -23,18 +23,6 @@ def default_force_applied() -> np.ndarray:
     current_state = np.array([0.0, 0.0, 1.0*np.sin(t)])
     return current_state
 
-@dataclass
-class SimulationParameters:
-    """Parameters for string simulation configuration."""
-    num_segments: int = 25  # Number of segments in the string
-    spring_constant: float = 1000.0  # Spring constant (k)
-    applied_force: np.ndarray = field(default_factory=default_force_applied)
-    mass: float = 0.01  # Mass of each point
-    dt: float = 0.0001  # Time step
-    start_point: np.ndarray = field(default_factory=default_start_point)
-    end_point: np.ndarray = field(default_factory=default_end_point)
-    integration_method: str = 'leapfrog'  # Integration method to use
-
 
 class StringSimulation:
     """Class to handle the string simulation setup and execution."""
@@ -59,7 +47,10 @@ class StringSimulation:
 
         # Calculate total length and equilibrium length between masses
         total_length = np.linalg.norm(self.params.end_point - self.params.start_point)
-        equilibrium_length = total_length / self.params.num_segments
+
+        # The equilibrium length which can be manipulated by the user, however the default will be based
+        # off a calculation of the end points
+        equilibrium_length = self.params.equilibrium_length
 
         # Create masses along the string
         for i in range(self.params.num_segments + 1):

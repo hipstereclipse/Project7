@@ -561,6 +561,10 @@ class SimulationParameters:
     applied_force: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
     dark_mode: bool = True
 
+    @property # Sets the default length of the equilibrium length based on length of segment (end points)
+    def equilibrium_length(self) -> float:
+        total_length = np.linalg.norm(self.end_point - self.start_point)
+        return total_length / self.num_segments
 
 class ForceHandler:
     """
@@ -697,6 +701,8 @@ class StringSimulationSetup:
         self.mass_var.set(self.default_params.mass)
         self.dt_var = tk.DoubleVar(self.root)
         self.dt_var.set(self.default_params.dt)
+        self.equilibrium_length_var = tk.DoubleVar(self.root)
+        self.equilibrium_length_var.set(self.default_params.equilibrium_length)
         force_magnitude = float(np.linalg.norm(self.default_params.applied_force))
         self.force_magnitude_var = tk.DoubleVar(self.root)
         self.force_magnitude_var.set(force_magnitude)
@@ -704,7 +710,6 @@ class StringSimulationSetup:
         self.integration_var.set(self.default_params.integration_method)
         self.dark_mode_var = tk.BooleanVar(self.root)
         self.dark_mode_var.set(self.default_params.dark_mode)
-        self.simulation_params = None
 
     def create_responsive_styles(self):
         """Create ttk styles that adjust with window resize."""
@@ -769,15 +774,48 @@ class StringSimulationSetup:
         main_frame.grid_columnconfigure(0, weight=1)
 
     def setup_basic_parameters(self, parent):
-        """UI elements for basic string properties: number of segments, k, mass, and display settings."""
+        """UI elements for basic string properties."""
         props_frame = ttk.LabelFrame(parent, text="String Properties", padding="10")
         props_frame.pack(fill="x", padx=5, pady=5)
+
+        # Create a grid layout for the parameters
         ttk.Label(props_frame, text="Number of Masses:").grid(row=0, column=0, padx=5, pady=5)
-        ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10).grid(row=0, column=1, padx=5, pady=5)
+        mass_entry = ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10)
+        mass_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Add trace to update equilibrium length when number of segments changes
+        def update_equilibrium_length(*args):
+            try:
+                num_segments = self.num_segments_var.get()
+                if num_segments > 0:
+                    total_length = np.linalg.norm(
+                        self.default_params.end_point - self.default_params.start_point
+                    )
+                    self.equilibrium_length_var.set(total_length / num_segments)
+            except tk.TclError:
+                pass  # Ignore invalid number format during typing
+
+        self.num_segments_var.trace_add("write", update_equilibrium_length)
+
         ttk.Label(props_frame, text="Spring constant (N/m):").grid(row=1, column=0, padx=5, pady=5)
         ttk.Entry(props_frame, textvariable=self.spring_constant_var, width=10).grid(row=1, column=1, padx=5, pady=5)
+
         ttk.Label(props_frame, text="Mass per point (kg):").grid(row=2, column=0, padx=5, pady=5)
         ttk.Entry(props_frame, textvariable=self.mass_var, width=10).grid(row=2, column=1, padx=5, pady=5)
+
+        ttk.Label(props_frame, text="Equilibrium length (m):").grid(row=3, column=0, padx=5, pady=5)
+        eq_length_entry = ttk.Entry(props_frame, textvariable=self.equilibrium_length_var, width=10)
+        eq_length_entry.grid(row=3, column=1, padx=5, pady=5)
+        eq_length_entry.config(state='readonly')  # Make it read-only since it's calculated
+
+        # Add tooltip or help text for equilibrium length
+        help_label = ttk.Label(
+            props_frame,
+            text="(Natural unstretched length of each spring)\n(Automatically calculated from string endpoints)",
+            font=("Arial", 8),
+            foreground="gray"
+        )
+        help_label.grid(row=3, column=2, padx=5, pady=5, sticky="w")
 
         display_frame = ttk.LabelFrame(parent, text="Display Settings", padding="10")
         display_frame.pack(fill="x", padx=5, pady=5)
@@ -858,6 +896,10 @@ class StringSimulationSetup:
             if dt <= 0:
                 raise ValueError("Time step must be positive")
 
+            equilibrium_length = self.equilibrium_length_var.get()
+            if equilibrium_length <= 0:
+                raise ValueError("Equilibrium length must be positive")
+
             force_magnitude = self.force_magnitude_var.get()
             if force_magnitude < 0:
                 raise ValueError("Force magnitude cannot be negative")
@@ -869,35 +911,20 @@ class StringSimulationSetup:
 
     def get_parameters(self):
         """Assemble and return a SimulationParameters object from user input."""
-        if not hasattr(self, 'simulation_params'):
+        if not self.validate_parameters():
             return None
-        try:
-            # Re-validate before returning parameters
-            if self.num_segments_var.get() < 3:
-                raise ValueError("Number of masses must be at least 3")
-            if self.spring_constant_var.get() <= 0:
-                raise ValueError("Spring constant must be positive")
-            if self.mass_var.get() <= 0:
-                raise ValueError("Mass must be positive")
-            if self.dt_var.get() <= 0:
-                raise ValueError("Time step must be positive")
-            if self.force_magnitude_var.get() < 0:
-                raise ValueError("Force magnitude cannot be negative")
 
-            params = SimulationParameters(
-                num_segments=(self.num_segments_var.get() - 1),
-                spring_constant=self.spring_constant_var.get(),
-                mass=self.mass_var.get(),
-                dt=self.dt_var.get(),
-                integration_method=self.integration_var.get(),
-                applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
-                dark_mode=self.dark_mode_var.get()
-            )
-            return params
-
-        except Exception as e:
-            messagebox.showerror("Parameter Validation Error", str(e))
-            return None
+        params = SimulationParameters(
+            num_segments=(self.num_segments_var.get() - 1),
+            spring_constant=self.spring_constant_var.get(),
+            mass=self.mass_var.get(),
+            dt=self.dt_var.get(),
+            integration_method=self.integration_var.get(),
+            applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
+            equilibrium_length=self.equilibrium_length_var.get(),
+            dark_mode=self.dark_mode_var.get()
+        )
+        return params
 
     def start_simulation(self):
         """
@@ -1672,14 +1699,17 @@ class SimulationVisualizer:
     def toggle_theme(self, event):
         """Toggle between dark and light theme for the figure and all UI elements."""
         self.dark_mode = not self.dark_mode
+
+        # Define colors based on theme
         text_color = 'white' if self.dark_mode else 'black'
         background_color = 'black' if self.dark_mode else 'white'
         button_color = 'gray' if self.dark_mode else 'lightgray'
 
-        # Update figure and axes background and text colors
+        # Update figure and axes colors
         self.fig.set_facecolor(background_color)
         self.ax.set_facecolor(background_color)
 
+        # Update axis elements
         for spine in self.ax.spines.values():
             spine.set_color(text_color)
         self.ax.tick_params(colors=text_color)
@@ -1688,14 +1718,15 @@ class SimulationVisualizer:
         self.ax.zaxis.label.set_color(text_color)
         self.ax.title.set_color(text_color)
 
+        # Update grid
         self.ax.grid(True, alpha=0.3, color=text_color)
 
-        # Update info texts
+        # Update text elements
         self.info_text.set_color(text_color)
         self.force_info_text.set_color(text_color)
         self.camera_info_text.set_color(text_color)
 
-        # Update buttons and sliders
+        # Update standard buttons
         buttons = [
             self.setup_button,
             self.play_button,
@@ -1713,12 +1744,20 @@ class SimulationVisualizer:
             button.hovercolor = self.plotter._adjust_color_brightness(button_color, 1.2)
             button.label.set_color(text_color)
 
+        # Update sliders
         sliders = [
             self.speed_slider,
             self.object_slider,
             self.amplitude_slider,
-            self.duration_slider
+            self.duration_slider,
+            self.gaussian_width_slider,
+            self.frequency_slider
         ]
+
+        if hasattr(self, 'gaussian_width_slider'):
+            sliders.append(self.gaussian_width_slider)
+        if hasattr(self, 'frequency_slider'):
+            sliders.append(self.frequency_slider)
 
         for slider in sliders:
             slider.label.set_color(text_color)
@@ -1730,20 +1769,16 @@ class SimulationVisualizer:
             if hasattr(slider, 'hline'):
                 slider.hline.set_color(text_color)
 
-        # Update radio buttons
-        radios = [self.force_radio, self.direction_radio]
-        for radio in radios:
-            circles = getattr(radio, '_circles', getattr(radio, 'circles', []))
-            for circle in circles:
-                circle.set_edgecolor(text_color)
-            for label in radio.labels:
-                label.set_color(text_color)
-
+        # Update plots and object highlighting
         self.update_plots()
         self.highlight_selected_object()
 
+        # Update button text
         self.theme_button.label.set_text('Dark Mode' if not self.dark_mode else 'Light Mode')
-        self.fig.canvas.draw_idle()
+
+        # Redraw the figure to apply all changes
+        if self.fig:
+            self.fig.canvas.draw_idle()
 
 class AnalysisVisualizer:
     """
