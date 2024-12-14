@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
-import scipy.signal
 
 from data_handling import DataAnalysis
 
@@ -2185,10 +2184,27 @@ class AnalysisVisualizer:
                 fft_matrix = np.array(fft_matrix)
                 average_spectrum = np.mean(fft_matrix, axis=0)
 
+                # Custom peak finding implementation
+                def find_peaks(spectrum, min_height_ratio=0.1):
+                    """Find peaks in spectrum that are above min_height_ratio * max(spectrum)."""
+                    peaks = []
+                    peak_heights = []
+                    threshold = min_height_ratio * np.max(spectrum)
+
+                    # A point is a peak if it's larger than its neighbors and above threshold
+                    for i in range(1, len(spectrum) - 1):
+                        if (spectrum[i] > spectrum[i - 1] and
+                                spectrum[i] > spectrum[i + 1] and
+                                spectrum[i] > threshold):
+                            peaks.append(i)
+                            peak_heights.append(spectrum[i])
+
+                    return np.array(peaks), np.array(peak_heights)
+
                 # Find peaks in the average spectrum
-                peaks, _ = scipy.signal.find_peaks(average_spectrum, height=0.1 * np.max(average_spectrum))
-                observed_freqs = freqs[peaks]
-                observed_mags = average_spectrum[peaks]
+                peak_indices, peak_heights = find_peaks(average_spectrum)
+                observed_freqs = freqs[peak_indices]
+                observed_mags = peak_heights
 
                 # Sort peaks by magnitude
                 sort_idx = np.argsort(observed_mags)[::-1]

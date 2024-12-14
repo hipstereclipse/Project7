@@ -192,8 +192,8 @@ class DataAnalysis:
         simulation_time = time_col.iloc[-1] - time_col.iloc[0]
         num_objects = self._detect_objects(file_path)
 
-        # I'm calling find_stationary_nodes with a threshold_percentage=10 by default.
-        # That means if a node doesn't move at more than 10% of max displacement, I consider it stationary.
+        # I'm calling find_stationary_nodes with a threshold_percentage=15 by default.
+        # That means if a node doesn't move at more than 15% of max displacement, I consider it stationary.
         stationary_nodes = self.find_stationary_nodes(file_path, threshold_percentage=15)
         num_stationary_nodes = len(stationary_nodes)
 
