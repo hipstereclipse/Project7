@@ -48,9 +48,11 @@ class StringSimulation:
         # Calculate total length and equilibrium length between masses
         total_length = np.linalg.norm(self.params.end_point - self.params.start_point)
 
+
         # The equilibrium length which can be manipulated by the user, however the default will be based
         # off a calculation of the end points
-        equilibrium_length = self.params.equilibrium_length
+        equilibrium_length = total_length / self.params.num_segments
+        print("Equilibium: ",  equilibrium_length)
 
         # Calculate positions of masses along the string
         for i in range(self.params.num_segments + 1):

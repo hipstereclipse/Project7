@@ -22,6 +22,7 @@ class PhysicsEngine:
         # Store the core simulation parameters
         print("Physics engine initialized with r0: ", equilibrium_length)
         self.objects = objects  # List of masses (each a SimulationObject instance)
+        print(len(objects))
         self.k = k  # Spring constant
         self.equilibrium_length = equilibrium_length  # Natural spring length
         self.start_point = start_point
@@ -175,10 +176,11 @@ class PhysicsEngine:
         if self.equilibrium_length is not None:
             equilibrium_length = self.equilibrium_length
         else:
-            equilibrium_length = total_length / len(self.objects)
+            equilibrium_length = total_length / (len(self.objects) - 1)
+            print(equilibrium_length)
 
         # Calculate displacement from equilibrium length
-        displacement = total_length - equilibrium_length
+        displacement = total_length - (equilibrium_length * (len(self.objects) - 1))
 
         # Apply Hooke's law to calculate tension
         tension = self.k * displacement
