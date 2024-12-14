@@ -687,6 +687,7 @@ class StringSimulationSetup:
         self.default_params = SimulationParameters()
         self.init_variables()
         self.root.minsize(550, 550)
+        self.root.resizable(False, False)
 
         # Positioning the window somewhere reasonable on the screen.
         screen_width = self.root.winfo_screenwidth()
@@ -700,7 +701,6 @@ class StringSimulationSetup:
         self.root.grid_columnconfigure(0, weight=1)
         self.create_responsive_styles()
         self.setup_gui()
-        self.root.bind('<Configure>', self.on_window_resize)
         self.simulation_params = None
 
     def init_variables(self):
@@ -738,23 +738,6 @@ class StringSimulationSetup:
         style.configure("Header.TLabel", font=("Arial", self.base_header_size, "bold"), anchor="center")
         style.configure("Normal.TLabel", font=("Arial", self.base_text_size), anchor="w")
         style.configure("Setup.TButton", font=("Arial", self.base_button_size), padding=10)
-
-    def on_window_resize(self, event):
-        """
-        Whenever the window resizes, I'll recalculate the scaling factor and update font sizes accordingly.
-        This just makes the UI more responsive.
-        """
-        if event.widget == self.root:
-            width_scale = event.width / (self.root.winfo_screenwidth() * 0.4)
-            height_scale = event.height / (self.root.winfo_screenheight() * 0.6)
-            scale = min(width_scale, height_scale)
-            style = ttk.Style()
-            style.configure("Header.TLabel", font=("Arial", int(self.base_header_size * scale), "bold"))
-            style.configure("Normal.TLabel", font=("Arial", int(self.base_text_size * scale)))
-            style.configure("Setup.TButton", font=("Arial", int(self.base_button_size * scale)))
-            base_padding = 10
-            scaled_padding = int(base_padding * scale)
-            style.configure("Setup.TButton", padding=scaled_padding)
 
     def setup_gui(self):
         """
@@ -1827,6 +1810,7 @@ class AnalysisVisualizer:
         # adds a top-level window for the analysis interface
         self.root = tk.Toplevel(main_root)
         self.root.title("String Simulation Analysis")
+        self.root.minsize(750, 330)
 
         # calculates window size and position based on screen dimensions
         window_width = int(self.root.winfo_screenwidth() * 0.55)
