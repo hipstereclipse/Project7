@@ -555,10 +555,10 @@ class SimulationParameters:
     custom_equilibrium_length: float = field(default=None)
     mass: float = 0.01
     dt: float = 0.0001
-    start_point: np.ndarray = field(default_factory=lambda: np.array([-1.0, 0.0, 0.0]))
-    end_point: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
+    start_point: np.ndarray = field(default_factory=lambda: np.array([-1.00000, 0.00000, 0.00000]))
+    end_point: np.ndarray = field(default_factory=lambda: np.array([1.00000, 0.00000, 0.00000]))
     integration_method: str = 'leapfrog'
-    applied_force: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 1.0]))
+    applied_force: np.ndarray = field(default_factory=lambda: np.array([0.00000, 0.00000, 1.00000]))
     dark_mode: bool = True
 
     @property
@@ -568,7 +568,7 @@ class SimulationParameters:
         if self.custom_equilibrium_length is not None:
             return self.custom_equilibrium_length
         total_length = np.linalg.norm(self.end_point - self.start_point)
-        return total_length / self.num_segments
+        return total_length / (self.num_segments-1)
 
     @equilibrium_length.setter
     def equilibrium_length(self, value: float):
@@ -797,7 +797,8 @@ class StringSimulationSetup:
                     total_length = np.linalg.norm(
                         self.default_params.end_point - self.default_params.start_point
                     )
-                    self.equilibrium_length_var.set(total_length / num_segments)
+                    natural_length = total_length / num_segments
+                    self.equilibrium_length_var.set(str(natural_length))
             except tk.TclError:
                 pass
 
@@ -1012,11 +1013,18 @@ class SimulationVisualizer:
         """
         Actually builds the figure, axes, and initials plots. Adds text elements for force/camera info as well.
         """
+        plt.close('all')  # Close any existing figures
         plt.style.use('dark_background' if self.dark_mode else 'default')
 
+        # Gets screen dimensions without creating a figure
+        import tkinter as tk
+        root = tk.Tk()
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        root.destroy()
+
         # Creates figure in full screen
-        self.fig = plt.figure(figsize=(plt.get_current_fig_manager().window.winfo_screenwidth() / 100,
-                                       plt.get_current_fig_manager().window.winfo_screenheight() / 100))
+        self.fig = plt.figure(figsize=(screen_width / 100, screen_height / 100))
         self.ax = self.fig.add_subplot(111, projection='3d')
 
         # Adjusts the main plot area for full screen while leaving space for controls
@@ -1035,9 +1043,6 @@ class SimulationVisualizer:
             except:
                 manager.resize(*manager.window.maxsize())
 
-        self.plotter.fig = self.fig
-        self.plotter.ax = self.ax
-
         self.setup_plots()
         self.setup_camera()
         self.setup_enhanced_controls()
@@ -1053,7 +1058,6 @@ class SimulationVisualizer:
             fontsize=10,
             verticalalignment='top'
         )
-        self.plotter.ui_elements['text']['force_info'] = self.force_info_text
 
         self.camera_info_text = self.ax.text2D(
             1.15, 0.40,
@@ -1063,7 +1067,6 @@ class SimulationVisualizer:
             fontsize=10,
             verticalalignment='top'
         )
-        self.plotter.ui_elements['text']['camera_info'] = self.camera_info_text
 
     def setup_plots(self):
         """
@@ -1434,13 +1437,23 @@ class SimulationVisualizer:
     def update_force_info(self):
         """
         Shows detailed force information on the selected mass: external forces, spring forces, total force.
+        Also includes spring constant, natural unstretched length, and custom unstretched length.
         """
         external_force, spring_forces, total_force = self.physics.get_forces_on_object(
             self.force_handler.selected_object)
 
+        # Get spring constant and equilibrium length from physics engine
+        spring_constant = self.physics.k
+        total_length = np.linalg.norm(self.physics.end_point - self.physics.start_point)
+        natural_length = total_length / (len(self.objects) - 1)  # Natural unstretched length
+        custom_length = self.physics.equilibrium_length  # Custom equilibrium length
+
         force_text = (
             f"Forces on Mass {self.force_handler.selected_object}:\n"
-            f"Tension on String: {self.physics.tension}N\n"
+            f"K: {spring_constant:.1f} N/m\n"
+            f"r: {natural_length:.3f} m\n"
+            f"r0: {custom_length:.4f} m\n"
+            f"Tension on String: {self.physics.tension:.1f}N\n"
             f"─────────────────────────\n"
             f"External Force:\n"
             f"  X: {external_force[0]:8.3f} N\n"
