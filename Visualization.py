@@ -1443,8 +1443,8 @@ class SimulationVisualizer:
         force_text = (
             f"Forces on Mass {self.force_handler.selected_object + 1}:\n"
             f"K: {spring_constant:.1f} N/m\n"
-            f"r: {natural_length:.4f} m\n"
-            f"r0: {custom_length:.4f} m\n"
+            f"r: {natural_length:.6f} m\n"
+            f"r0: {custom_length:.6f} m\n"
             f"Tension on String: {self.physics.tension:.1f}N\n"
             f"─────────────────────────\n"
             f"External Force:\n"
