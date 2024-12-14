@@ -60,6 +60,7 @@ class PhysicsEngine:
             else:
                 self.continuous_forces[obj_id] = False
                 self.force_end_times[obj_id] = self.time + duration
+
     def get_forces_on_object(self, obj_index: int) -> tuple:
         """
         Calculate all forces acting on a specific object.
@@ -162,7 +163,7 @@ class PhysicsEngine:
 
     def calculate_tension(self):
         """
-        Calculate the tension on the string based on the equilibrium length, spring constant, and custom equilibrium length.
+        Calculates the tension on the string based on the equilibrium length, spring constant, and custom equilibrium length.
 
         Returns:
             float: The calculated tension on the string.
