@@ -666,7 +666,7 @@ class ForceHandler:
 
     def deactivate(self):
         """
-        Stop applying forces and reset timers.
+        Stops applying forces and resets timers.
         """
         self.active = False
         self.duration_remaining = self.duration
@@ -1010,13 +1010,30 @@ class SimulationVisualizer:
 
     def setup_visualization(self):
         """
-        Actually builds the figure, axes, and initializes plots. Add text elements for force/camera info as well.
+        Actually builds the figure, axes, and initials plots. Adds text elements for force/camera info as well.
         """
         plt.style.use('dark_background' if self.dark_mode else 'default')
-        self.fig = plt.figure(figsize=(12, 10))
+
+        # Creates figure in full screen
+        self.fig = plt.figure(figsize=(plt.get_current_fig_manager().window.winfo_screenwidth() / 100,
+                                       plt.get_current_fig_manager().window.winfo_screenheight() / 100))
         self.ax = self.fig.add_subplot(111, projection='3d')
-        # Adjust the main plot area so I have space on the sides for UI elements.
+
+        # Adjusts the main plot area for full screen while leaving space for controls
         self.ax.set_position([0.20, 0.15, 0.6, 0.8])
+
+        # Makes window full screen
+        manager = plt.get_current_fig_manager()
+        if plt.get_backend() == 'TkAgg':
+            manager.window.state('zoomed')  # For Windows
+        elif plt.get_backend() == 'Qt5Agg':
+            manager.window.showMaximized()  # For Qt
+        else:
+            # Tries to make it full screen for other backends
+            try:
+                manager.full_screen_toggle()
+            except:
+                manager.resize(*manager.window.maxsize())
 
         self.plotter.fig = self.fig
         self.plotter.ax = self.ax
@@ -1234,11 +1251,39 @@ class SimulationVisualizer:
     def return_to_setup(self, event):
         """
         If I want to go back to the setup window, close the figure and show main_root window.
+        Ensures proper cleanup of matplotlib windows and restoration of main window state.
         """
         self.should_restart = True
-        plt.close(self.fig)
+
+        # Stop any ongoing animation
+        if hasattr(self, 'anim'):
+            self.anim.event_source.stop()
+
+        # Restores window state before closing
+        manager = plt.get_current_fig_manager()
+        if plt.get_backend() == 'TkAgg':
+            manager.window.state('normal')  # Un-maximize window
+        elif plt.get_backend() == 'Qt5Agg':
+            manager.window.showNormal()  # Un-maximize window
+
+        # Close all matplotlib figures
+        plt.close('all')
+
+        # Shows the main window if it exists
         if self.main_root:
             self.main_root.deiconify()
+            self.main_root.lift()  # Brings to front
+            self.main_root.focus_force()  # Forces focus
+
+            # Resets main window state if needed
+            self.main_root.state('normal')  # Ensures it's not minimized
+
+            # Centers the main window
+            window_width = int(self.main_root.winfo_screenwidth() * 0.27)
+            window_height = int(self.main_root.winfo_screenheight() * 0.6)
+            x = (self.main_root.winfo_screenwidth() // 2) - (window_width // 2)
+            y = (self.main_root.winfo_screenheight() // 2) - (window_height // 4)
+            self.main_root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
     def _connect_events(self):
         """
