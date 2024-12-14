@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
+import scipy.signal
 
 from data_handling import DataAnalysis
 
@@ -1933,9 +1934,10 @@ class AnalysisVisualizer:
         row1_buttons = [
             ("View Summary", self.show_summary),
             ("Find Stationary Nodes", self.compare_stationary),
+            ("Movement Patterns", self.compare_movement),
             ("Node Displacement", self.compare_displacement),
-            ("Average Displacements", self.plot_nodal_average_displacement),
-            ("Movement Patterns", self.compare_movement)
+            ("Average Displacements", self.plot_nodal_average_displacement)
+
         ]
 
         # adds each button in the first row of analysis options
@@ -1948,16 +1950,14 @@ class AnalysisVisualizer:
         row2_buttons = [
             ("Harmonic Analysis", self.analyze_harmonics),
             ("Frequency Analysis", self.analyze_frequencies),
+            ("Natural Frequencies", self.analyze_natural_frequencies),
             ("Normalized Displacements", self.plot_nodal_normalized_displacement)
         ]
-
-        # Calculate starting column to center the second row
-        start_col = (len(row1_buttons) - len(row2_buttons)) // 2
 
         # adds the second row of buttons
         for i, (text, command) in enumerate(row2_buttons):
             ttk.Button(analysis_frame, text=text, command=command).grid(
-                row=1, column=start_col + i, padx=5, pady=5, sticky="ew"
+                row=1, column=1 + i, padx=5, pady=5, sticky="ew"
             )
 
     def load_files(self):
@@ -2097,6 +2097,193 @@ class AnalysisVisualizer:
             for node_id, pos in summary['stationary_node_positions'].items():
                 text.insert("end", f"Node {node_id} position: {pos}\n")
         text.config(state=tk.DISABLED)
+
+    def analyze_natural_frequencies(self):
+        """
+        Compares observed frequencies from the simulation with theoretical natural frequencies
+        based on string parameters. For each simulation file, it:
+        1. Calculates theoretical natural frequencies using fn = (n/2L) * sqrt(T/μ)
+        2. Extracts actual frequency peaks from simulation data
+        3. Compares theoretical vs observed frequencies
+        4. Visualizes the results with both line and bar plots
+        """
+        files = self.get_selected_files()
+        if not files:
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        self.root.withdraw()
+        try:
+            plotter = PlottingToolkit()
+            first_file = True
+
+            for file_path in files:
+                data = self.loaded_files[file_path]
+                filename = os.path.basename(file_path)
+
+                # Get simulation parameters
+                summary = self.analyzer.get_simulation_summary(file_path)
+                num_nodes = summary['num_objects']
+
+                # Calculate string properties
+                df = self.analyzer.simulations[file_path]
+                time_step = df['Time'].diff().mean()
+
+                # Get positions for first and last nodes to calculate length
+                x0, y0, z0 = self.analyzer.get_object_trajectory(file_path, 0)
+                xn, yn, zn = self.analyzer.get_object_trajectory(file_path, num_nodes - 1)
+                start_pos = np.array([x0[0], y0[0], z0[0]])
+                end_pos = np.array([xn[0], yn[0], zn[0]])
+                string_length = np.linalg.norm(end_pos - start_pos)
+
+                # Calculate total mass and mass per unit length
+                mass_per_node = None
+                tension = None
+
+                # Try to extract mass and tension from column names
+                for col in df.columns:
+                    if 'mass' in col.lower():
+                        mass_per_node = float(col.split('=')[1]) if '=' in col else None
+                    if 'tension' in col.lower():
+                        tension = float(col.split('=')[1]) if '=' in col else None
+
+                if mass_per_node is None:
+                    mass_per_node = 0.01  # Default from simulation parameters
+                if tension is None:
+                    tension = 1000.0  # Default spring constant
+
+                total_mass = mass_per_node * num_nodes
+                mass_per_length = total_mass / string_length
+
+                # Calculate theoretical natural frequencies for first 10 modes
+                modes = np.arange(1, 11)
+                theoretical_freqs = (modes / (2 * string_length)) * np.sqrt(tension / mass_per_length)
+
+                # Get actual frequency spectrum from simulation data
+                node_displacements = []
+                for node_id in range(num_nodes):
+                    x, y, z = self.analyzer.get_object_trajectory(file_path, node_id)
+                    positions = np.column_stack([x, y, z])
+                    initial_pos = positions[0]
+                    displacements = np.linalg.norm(positions - initial_pos, axis=1)
+                    node_displacements.append(displacements)
+
+                node_displacements = np.array(node_displacements)
+                n_samples = node_displacements.shape[1]
+
+                # Compute FFT
+                freqs = np.fft.fftfreq(n_samples, time_step)[:n_samples // 2]
+                freqs = freqs[1:-1]  # Remove DC and Nyquist
+
+                fft_matrix = []
+                for disp in node_displacements:
+                    fft_result = np.fft.fft(disp)
+                    half_fft = np.abs(fft_result[:n_samples // 2])
+                    half_fft = half_fft[1:-1]
+                    fft_matrix.append(half_fft)
+
+                fft_matrix = np.array(fft_matrix)
+                average_spectrum = np.mean(fft_matrix, axis=0)
+
+                # Find peaks in the average spectrum
+                peaks, _ = scipy.signal.find_peaks(average_spectrum, height=0.1 * np.max(average_spectrum))
+                observed_freqs = freqs[peaks]
+                observed_mags = average_spectrum[peaks]
+
+                # Sort peaks by magnitude
+                sort_idx = np.argsort(observed_mags)[::-1]
+                observed_freqs = observed_freqs[sort_idx]
+                observed_mags = observed_mags[sort_idx]
+
+                # Keep only top 10 peaks
+                observed_freqs = observed_freqs[:10]
+                observed_mags = observed_mags[:10]
+
+                # Calculate frequency differences
+                freq_differences = []
+                matched_observed = []
+                matched_theoretical = []
+
+                for theo_freq in theoretical_freqs:
+                    if len(observed_freqs) > 0:
+                        # Find closest observed frequency
+                        idx = np.argmin(np.abs(observed_freqs - theo_freq))
+                        obs_freq = observed_freqs[idx]
+
+                        diff_percent = 100 * (obs_freq - theo_freq) / theo_freq
+                        freq_differences.append(diff_percent)
+                        matched_observed.append(obs_freq)
+                        matched_theoretical.append(theo_freq)
+
+                # Create visualization
+                plot_config = PlotConfig(
+                    title=f"Natural Frequency Analysis - {filename}",
+                    xlabel="Mode Number",
+                    ylabel="Frequency (Hz)",
+                    grid=True,
+                    figure_size=(15, 10)
+                )
+
+                # Get color from tree
+                color = None
+                for item in self.file_tree.get_children():
+                    values = self.file_tree.item(item)["values"]
+                    if values[0] == filename:
+                        color = values[4]
+                        break
+                if color is None:
+                    color = 'steelblue'
+
+                # Plot theoretical vs observed frequencies
+                plotter.plot(
+                    modes,
+                    theoretical_freqs,
+                    plot_type='line',
+                    color=color,
+                    label=f'{filename} (Theoretical)',
+                    marker_style='o',
+                    new_figure=first_file,
+                    **vars(plot_config)
+                )
+
+                plotter.plot(
+                    modes[:len(matched_observed)],
+                    matched_observed,
+                    plot_type='scatter',
+                    color='red',
+                    label=f'{filename} (Observed)',
+                    marker_style='x',
+                    new_figure=False,
+                    **vars(plot_config)
+                )
+
+                # Add text annotations for differences
+                summary_text = "Frequency Differences:\n"
+                for i, (theo, obs, diff) in enumerate(zip(matched_theoretical, matched_observed, freq_differences)):
+                    summary_text += f"Mode {i + 1}: {diff:+.1f}% ({obs:.1f} vs {theo:.1f} Hz)\n"
+
+                # Place summary text as annotation
+                plotter.ax.text(
+                    0.95, 0.95,
+                    summary_text,
+                    transform=plotter.ax.transAxes,
+                    fontsize=9,
+                    va='top',
+                    ha='right',
+                    bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, boxstyle='round')
+                )
+
+                first_file = False
+
+            # Show legend and adjust layout
+            plotter.ax.legend(loc='upper left', frameon=True)
+            plotter.fig.tight_layout()
+            plotter.show()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to analyze natural frequencies: {str(e)}")
+        finally:
+            self.root.deiconify()
 
     def compare_movement(self):
         """
