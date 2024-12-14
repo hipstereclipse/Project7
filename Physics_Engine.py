@@ -122,17 +122,17 @@ class PhysicsEngine:
         displacement = current_length - self.equilibrium_length
         force_magnitude = self.k * displacement
 
-        # Debug info to verify force calculation
-        if hasattr(self, 'debug_counter'):
-            self.debug_counter += 1
-            if self.debug_counter % 1000 == 0:  # Print every 1000th calculation
-                print(f"Spring force calculation:")
-                print(f"Current length: {current_length:.6f}")
-                print(f"Equilibrium length: {self.equilibrium_length:.6f}")
-                print(f"Displacement from equilibrium: {displacement:.6f}")
-                print(f"Force magnitude: {force_magnitude:.2f}")
-        else:
-            self.debug_counter = 0
+        # Used to debug info and verify force calculation
+        # if hasattr(self, 'debug_counter'):
+        #     self.debug_counter += 1
+        #     if self.debug_counter % 1000 == 0:  # Print every 1000th calculation
+        #         print(f"Spring force calculation:")
+        #         print(f"Current length: {current_length:.6f}")
+        #         print(f"Equilibrium length: {self.equilibrium_length:.6f}")
+        #         print(f"Displacement from equilibrium: {displacement:.6f}")
+        #         print(f"Force magnitude: {force_magnitude:.2f}")
+        # else:
+        #     self.debug_counter = 0
 
         return force_magnitude * unit_vector
 

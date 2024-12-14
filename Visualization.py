@@ -592,7 +592,7 @@ class ForceHandler:
         self.duration = 0.01
         self.duration_remaining = 0.01
         self.amplitude = 10.0
-        self.selected_object = len(objects) // 2
+        self.selected_object = ((len(self.objects)+1) // 2)-1
         self.gaussian_width = len(self.objects) / 8.0
         self.sinusoidal_frequency = 10.0
 
@@ -793,11 +793,11 @@ class StringSimulationSetup:
             # If user changes num_segments, recalc equilibrium length automatically.
             try:
                 num_segments = self.num_segments_var.get()
-                if num_segments > 0:
+                if num_segments > 1:
                     total_length = np.linalg.norm(
                         self.default_params.end_point - self.default_params.start_point
                     )
-                    natural_length = total_length / num_segments
+                    natural_length = total_length / (num_segments-1)
                     self.equilibrium_length_var.set(str(natural_length))
             except tk.TclError:
                 pass
@@ -1174,10 +1174,11 @@ class SimulationVisualizer:
         )
         self.direction_radio.on_clicked(self.set_force_direction)
 
-        min_object = 1
-        max_object = max(1,len(self.objects) - 1)
-        initial_object = min(max_object, max(min_object, self.force_handler.selected_object))
-
+        min_object = 2
+        max_object = len(self.objects)-1
+        initial_object = (len(self.objects)+1) // 2
+        #print(round(12.5))
+        #print(float(len(self.objects)),"+",initial_object)
         self.object_slider = Slider(
             plt.axes([left_panel_start, 0.40, panel_width, 0.02]),
             'Object',
@@ -1431,8 +1432,7 @@ class SimulationVisualizer:
         Shows detailed force information on the selected mass: external forces, spring forces, total force.
         Also includes spring constant, natural unstretched length, and custom unstretched length.
         """
-        external_force, spring_forces, total_force = self.physics.get_forces_on_object(
-            self.force_handler.selected_object)
+        external_force, spring_forces, total_force = self.physics.get_forces_on_object(self.force_handler.selected_object)
 
         # Get spring constant and equilibrium length from physics engine
         spring_constant = self.physics.k
@@ -1441,9 +1441,9 @@ class SimulationVisualizer:
         custom_length = self.physics.equilibrium_length  # Custom equilibrium length
 
         force_text = (
-            f"Forces on Mass {self.force_handler.selected_object}:\n"
+            f"Forces on Mass {self.force_handler.selected_object + 1}:\n"
             f"K: {spring_constant:.1f} N/m\n"
-            f"r: {natural_length:.3f} m\n"
+            f"r: {natural_length:.4f} m\n"
             f"r0: {custom_length:.4f} m\n"
             f"Tension on String: {self.physics.tension:.1f}N\n"
             f"─────────────────────────\n"
@@ -1668,7 +1668,7 @@ class SimulationVisualizer:
         self.force_handler.selected_direction = label
 
     def set_selected_object(self, val):
-        self.force_handler.selected_object = int(float(val))
+        self.force_handler.selected_object = int(val-1)
         self.highlight_selected_object()
         self.fig.canvas.draw_idle()
 
@@ -1805,7 +1805,6 @@ class SimulationVisualizer:
 
         self.info_text.set_color(text_color)
         self.force_info_text.set_color(text_color)
-        self.camera_info_text.set_color(text_color)
 
         buttons = [
             self.setup_button,

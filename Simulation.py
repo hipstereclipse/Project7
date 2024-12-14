@@ -52,16 +52,16 @@ class StringSimulation:
         # The equilibrium length which can be manipulated by the user, however the default will be based
         # off a calculation of the end points
         equilibrium_length = total_length / self.params.num_segments
-        print("Equilibium: ",  equilibrium_length)
+        #print("Equilibium: ",  equilibrium_length)
 
         # Calculate positions of masses along the string
-        for i in range(self.params.num_segments + 1):
+        for i in range(self.params.num_segments+1):
             # Calculate position as linear interpolation between start and end points
             t = i / self.params.num_segments
             position = (1 - t) * self.params.start_point + t * self.params.end_point
 
             # Reverses the object ID assignment for the sake of lining up better with the slider.
-            reversed_id = self.params.num_segments - i
+            reversed_id = (self.params.num_segments) - i
 
             # Create mass object with initial conditions
             mass = SimulationObject(
