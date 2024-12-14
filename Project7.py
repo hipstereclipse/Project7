@@ -127,15 +127,15 @@ class MainMenu:
 
     def start_simulation(self):
         """Launches the simulation setup and handling loop."""
-        self.root.withdraw()  # Hide main menu
+        self.root.withdraw()  # Hides main menu
 
-        # Create setup GUI and wait for parameters
+        # Creates setup GUI and wait for parameters
         setup = StringSimulationSetup(self.root)
         setup.root.wait_window()  # Wait for setup window to close
         params = setup.simulation_params  # Get params after window closes
 
         if params is not None:
-            # Create and run simulation only if parameters were set
+            # Creates and runs simulation only if parameters were set
             simulation = StringSimulation(params)
             should_restart = simulation.run()
 
@@ -144,18 +144,20 @@ class MainMenu:
                 self.start_simulation()
                 return
 
-        # Show main menu again if setup was cancelled or simulation ended
+        # Shows main menu again if setup was cancelled or simulation ended
         self.root.deiconify()
 
     def start_analysis(self):
         """Launches the analysis visualization system."""
-        self.root.withdraw()  # Hide main menu
+        self.root.withdraw()  # Hides main menu
 
-        # Create and run analyzer
-        analyzer = AnalysisVisualizer(self.root)  # Pass main menu root
-        analyzer.run()
+        # Creates the analyzer window - it shows show itself.
+        analyzer = AnalysisVisualizer(self.root)
 
-        self.root.deiconify()  # Show main menu again
+        # Waits for the analyzer window to be closed
+        self.root.wait_window(analyzer.root)
+
+        self.root.deiconify()  # Shows main menu again when analysis window closes
 
     def exit_program(self):
         """Clean up and exit the program."""

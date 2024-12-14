@@ -686,13 +686,13 @@ class StringSimulationSetup:
         self.root.title("String Simulation Setup")
         self.default_params = SimulationParameters()
         self.init_variables()
-        self.root.minsize(600, 500)
+        self.root.minsize(550, 550)
 
         # Positioning the window somewhere reasonable on the screen.
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
-        window_width = int(screen_width * 0.4)
-        window_height = int(screen_height * 0.6)
+        window_width = 550
+        window_height = 550
         x = (screen_width // 2) - (window_width // 2)
         y = (screen_height // 4) - (window_height // 4)
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
