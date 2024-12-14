@@ -12,14 +12,13 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
 
 from data_handling import DataAnalysis
-
+from data_handling import SimulationDataRecorder  # Needed for referencing if required
+from Mass import SimulationObject
+from Integrator import INTEGRATORS
+from Physics_Engine import PhysicsEngine
+from math import sqrt, pi
 
 class ViewPreset(Enum):
-    """
-    Predefined camera angle presets for the 3D simulation plot. I find it helpful
-    to define these so I can quickly jump to known viewpoints (like top or front).
-    This makes it a lot easier than manually adjusting camera angles each time.
-    """
     DEFAULT = {"name": "Default", "azim": 45, "elev": 15}
     TOP = {"name": "Top (XY)", "azim": 0, "elev": 90}
     FRONT = {"name": "Front (XZ)", "azim": 0, "elev": 0}
@@ -27,15 +26,8 @@ class ViewPreset(Enum):
     ISOMETRIC = {"name": "Isometric", "azim": 45, "elev": 35}
     FREE = {"name": "Free", "azim": None, "elev": None}
 
-
 @dataclass
 class PlotConfig:
-    """
-    This class is all about how I want the plot to look and behave.
-    For instance, I can specify if it's 2D or 3D, set labels, titles, scaling,
-    and even tweak padding and figure size. The idea is that I can pass
-    these configurations around and not rewrite the same settings repeatedly.
-    """
     title: Optional[str] = None
     xlabel: Optional[str] = None
     ylabel: Optional[str] = None
@@ -49,8 +41,6 @@ class PlotConfig:
     figure_size: Tuple[float, float] = (10, 6)
     style: str = 'default'
     colors: Optional[List[str]] = None
-
-    # For 3D plots, I might want to set a camera view preset or make it interactive.
     is_3d: bool = False
     view_preset: Optional[ViewPreset] = None
     interactive_3d: bool = True
@@ -58,8 +48,6 @@ class PlotConfig:
     show_animation_controls: bool = False
     auto_rotate: bool = False
     rotation_speed: float = 1.0
-
-    # Fine-grained control over layout padding so labels and titles aren't squashed.
     title_pad: float = 20
     xlabel_pad: float = 10
     ylabel_pad: float = 10
@@ -70,43 +58,39 @@ class PlotConfig:
     subplot_bottom_pad: float = 0.1
     subplot_left_pad: float = 0.1
     subplot_right_pad: float = 0.9
-
     spacing: dict = field(default_factory=lambda: {
         'margins': {
-            'left': None,  # If None, uses subplot_left_pad
-            'right': None,  # If None, uses subplot_right_pad
-            'top': None,  # If None, uses subplot_top_pad
-            'bottom': None,  # If None, uses subplot_bottom_pad
-            'wspace': 0.2,  # Width spacing between subplots
-            'hspace': 0.2  # Height spacing between subplots
+            'left': None,
+            'right': None,
+            'top': None,
+            'bottom': None,
+            'wspace': 0.2,
+            'hspace': 0.2
         },
         'elements': {
-            'title_spacing': None,  # If None, uses title_pad
-            'xlabel_spacing': None,  # If None, uses xlabel_pad
-            'ylabel_spacing': None,  # If None, uses ylabel_pad
-            'zlabel_spacing': None,  # If None, uses zlabel_pad
-            'legend_spacing': None,  # If None, uses legend_pad
-            'tick_spacing': None  # If None, uses tick_pad
+            'title_spacing': None,
+            'xlabel_spacing': None,
+            'ylabel_spacing': None,
+            'zlabel_spacing': None,
+            'legend_spacing': None,
+            'tick_spacing': None
         }
     })
     legend_config: dict = field(default_factory=lambda: {
-        'position': None,  # If None, uses legend_position
-        'anchor': None,  # Custom anchor point (x, y)
-        'columns': 1,  # Number of columns
-        'fontsize': 10,  # Font size
-        'framewidth': 1,  # Frame width
-        'framealpha': 0.8,  # Frame transparency
-        'spacing': 0.5,  # Entry spacing
-        'title_fontsize': 12  # Title font size
+        'position': None,
+        'anchor': None,
+        'columns': 1,
+        'fontsize': 10,
+        'framewidth': 1,
+        'framealpha': 0.8,
+        'spacing': 0.5,
+        'title_fontsize': 12
     })
 
     def get_margin(self, side: str) -> float:
-        """Gets margin value, prioritizing new spacing over legacy values."""
         margin = self.spacing['margins'][side]
         if margin is not None:
             return margin
-
-        # Map to legacy values
         legacy_map = {
             'left': self.subplot_left_pad,
             'right': self.subplot_right_pad,
@@ -116,12 +100,9 @@ class PlotConfig:
         return legacy_map.get(side, 0.1)
 
     def get_element_spacing(self, element: str) -> float:
-        """Gets element spacing value, prioritizing new spacing over legacy values."""
         spacing = self.spacing['elements'][f'{element}_spacing']
         if spacing is not None:
             return spacing
-
-        # Map to legacy values
         legacy_map = {
             'title': self.title_pad,
             'xlabel': self.xlabel_pad,
@@ -132,13 +113,8 @@ class PlotConfig:
         }
         return legacy_map.get(element, 5.0)
 
+
 class PlottingToolkit:
-    """
-    This toolkit is basically my personal helper for making and managing 2D/3D matplotlib plots.
-    I built it so I can add buttons, sliders, and other UI elements on the fly,
-    change between dark/light themes, handle view changes, and so forth.
-    It just wraps a lot of repetitive matplotlib stuff into something more convenient.
-    """
     DEFAULT_CONFIG = {
         'enable_view_cycling': True,
         'enable_zoom_controls': True,
@@ -176,30 +152,21 @@ class PlottingToolkit:
     }
 
     def __init__(self):
-        # Just some defaults and state variables I might need later.
         self.default_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
         self.current_rotation = 0
         self.animation_running = False
         self.fig = None
         self.ax = None
-        # I'll store UI elements (buttons/sliders) in a structured way so I can remove or update them easily later.
         self.ui_elements = {k: {} for k in ['buttons','sliders','radio_buttons','text','legends']}
         self._mouse_button = None
         self._mouse_x = None
         self._mouse_y = None
-        # Camera parameters for controlling the 3D view angle and zoom.
         self.camera = {'distance': 2.0, 'azimuth': 45, 'elevation': 15, 'rotation_speed': 0.3, 'zoom_speed': 0.1}
         self.config = dict(self.DEFAULT_CONFIG)
         self.dark_mode = self.config['dark_mode']
         self.current_theme = 'dark' if self.dark_mode else 'light'
 
     def create_figure(self, config: PlotConfig) -> Tuple[plt.Figure, plt.Axes]:
-        """
-        This function is where I actually set up a new figure and axes with all the styling from PlotConfig.
-        If I need a 3D axes, I'll do that here. Otherwise, just a normal 2D axes.
-        Also sets things like labels and adjusts subplot spacing.
-        """
-        # Close any previous figure to avoid issues like multiple windows stacking.
         if self.fig is not None:
             plt.close(self.fig)
             self.fig = None
@@ -208,7 +175,6 @@ class PlottingToolkit:
         plt.style.use(config.style)
         self.fig = plt.figure(figsize=config.figure_size)
 
-        # Usable if I need a 3D subplot.
         if config.is_3d:
             self.ax = self.fig.add_subplot(111, projection='3d')
             if config.zlabel:
@@ -221,7 +187,6 @@ class PlottingToolkit:
         else:
             self.ax = self.fig.add_subplot(111)
 
-        # Applies margins
         self.fig.subplots_adjust(
             left=config.get_margin('left'),
             right=config.get_margin('right'),
@@ -231,7 +196,6 @@ class PlottingToolkit:
             hspace=config.spacing['margins']['hspace']
         )
 
-        # Sets title and labels with spacing
         if config.title:
             self.ax.set_title(config.title, pad=config.get_element_spacing('title'))
         if config.xlabel:
@@ -239,30 +203,20 @@ class PlottingToolkit:
         if config.ylabel:
             self.ax.set_ylabel(config.ylabel, labelpad=config.get_element_spacing('ylabel'))
 
-        # Configures ticks
         self.ax.tick_params(pad=config.get_element_spacing('tick'))
 
-        # Sets scales for 2D plots
         if not config.is_3d:
             self.ax.set_xscale(config.xscale)
             self.ax.set_yscale(config.yscale)
 
-        # Configures grid
         self.ax.grid(config.grid, alpha=0.3)
 
         self.fig.canvas.draw_idle()
         return self.fig, self.ax
 
     def plot(self, x, y, z=None, new_figure=True, legend_kwargs=None, **kwargs):
-        """
-        This is a general-purpose plotting method that can handle 2D or 3D data.
-        I can pass it a bunch of parameters and it will decide if it needs a new figure,
-        and what kind of plot style to use (line, bar, scatter).
-        """
-        # Extract what might be PlotConfig parameters from kwargs.
         config = PlotConfig(**{k: v for k, v in kwargs.items() if k in PlotConfig.__annotations__})
 
-        # If I must start a new figure or if we don't have one yet, do so now.
         if new_figure or self.fig is None:
             self.fig, self.ax = self.create_figure(config)
 
@@ -279,22 +233,15 @@ class PlottingToolkit:
         color = kwargs.get('color', self.default_colors[0])
         alpha = kwargs.get('alpha', 1.0)
 
-        # Check if it’s 3D. If yes and z is provided, do a 3D plot.
         if z is not None and config.is_3d:
             self._plot_3d(x, y, z, plot_type, color, alpha, kwargs)
         else:
-            # Otherwise, just do a 2D plot.
             self._plot_2d(x, y, plot_type, color, alpha, kwargs)
 
-        # If there’s a label, add a legend so I can distinguish lines/plots.
         if 'label' in kwargs:
             self.ax.legend(**default_legend_kwargs)
 
     def _plot_2d(self, x, y, plot_type, color, alpha, kwargs):
-        """
-        This helper is specifically for 2D plotting. I separate it out so I can keep
-        the main plot function cleaner. Here I handle line, bar, and scatter in 2D.
-        """
         if plot_type == 'line':
             self.ax.plot(x, y, color=color, linestyle=kwargs.get('line_style', '-'),
                          marker=kwargs.get('marker_style', None),
@@ -307,10 +254,6 @@ class PlottingToolkit:
                             alpha=alpha, label=kwargs.get('label'))
 
     def _plot_3d(self, x, y, z, plot_type, color, alpha, kwargs):
-        """
-        This is just like the 2D one, but for 3D plotting.
-        I can handle scatter, line, and surfaces differently.
-        """
         if plot_type == 'scatter':
             self.ax.scatter(x, y, z, marker=kwargs.get('marker_style', 'o'),
                             color=color, alpha=alpha, label=kwargs.get('label'))
@@ -325,35 +268,23 @@ class PlottingToolkit:
                 self.fig.colorbar(surf)
 
     def update_data(self, plot_object, x, y, z=None):
-        """
-        If I need to dynamically update the data points of a plot (like in an animation),
-        this function tries to handle both 2D and 3D updates gracefully.
-        """
         from mpl_toolkits.mplot3d import Axes3D
         if isinstance(self.ax, Axes3D):
-            # For 3D scatter, offsets3d can be updated. For lines, I use set_data and set_3d_properties.
             if hasattr(plot_object, '_offsets3d'):
                 plot_object._offsets3d = (np.array(x), np.array(y), np.array(z))
             else:
                 plot_object.set_data(x, y)
                 plot_object.set_3d_properties(z)
         else:
-            # For 2D, scatter and line have slightly different update methods.
             if hasattr(plot_object, 'set_offsets'):
                 plot_object.set_offsets(np.column_stack([x, y]))
             else:
                 plot_object.set_data(x, y)
 
     def update_spacing(self, config: PlotConfig):
-        """
-        Updates subplot margins and element spacing based on the configuration.
-        Applies margins with subplots_adjust. Sets title, label, and tick spacing.
-        Redraws the canvas to reflect changes immediately.
-        """
         if not self.fig or not self.ax:
             return
 
-        # Applies margins from config without relying on tight_layout.
         self.fig.subplots_adjust(
             left=config.get_margin('left'),
             right=config.get_margin('right'),
@@ -363,11 +294,8 @@ class PlottingToolkit:
             hspace=config.spacing['margins']['hspace']
         )
 
-        # Updates title spacing if the title exists.
         if self.ax.get_title():
             self.ax.set_title(self.ax.get_title(), pad=config.get_element_spacing('title'))
-
-        # Updates label spacing if labels exist.
         if self.ax.get_xlabel():
             self.ax.set_xlabel(self.ax.get_xlabel(), labelpad=config.get_element_spacing('xlabel'))
         if self.ax.get_ylabel():
@@ -375,17 +303,10 @@ class PlottingToolkit:
         if hasattr(self.ax, 'get_zlabel') and self.ax.get_zlabel():
             self.ax.set_zlabel(self.ax.get_zlabel(), labelpad=config.get_element_spacing('zlabel'))
 
-        # Updates tick padding.
         self.ax.tick_params(pad=config.get_element_spacing('tick'))
-
-        # Redraws the figure to apply changes.
         self.fig.canvas.draw_idle()
 
     def add_text(self, x, y, text, **kwargs):
-        """
-        I might want to add annotations or info text to the plot. This handles adding text,
-        either in 2D or 3D. The coordinates are in Axes fraction (0 to 1).
-        """
         text_id = kwargs.pop('text_id', None)
         from mpl_toolkits.mplot3d import Axes3D
         if isinstance(self.ax, Axes3D):
@@ -399,10 +320,6 @@ class PlottingToolkit:
 
     def add_button(self, position, label, callback, color='gray', text_color='white',
                    hover_color=None, button_id=None):
-        """
-        I can attach interactive buttons directly onto the figure. This is super handy
-        when I want a "Play/Pause" button or something similar right next to the plot.
-        """
         from matplotlib.widgets import Button
         ax_button = plt.axes(position)
         hover_color = hover_color or self._adjust_color_brightness(color, 1.2)
@@ -417,10 +334,6 @@ class PlottingToolkit:
 
     def add_slider(self, position, label, valmin, valmax, valinit=None,
                    callback=None, color='gray', text_color='white', slider_id=None):
-        """
-        Sliders let me adjust parameters of the simulation in real time,
-        like speed or amplitude of a force, without rebuilding or restarting everything.
-        """
         from matplotlib.widgets import Slider
         ax_slider = plt.axes(position)
         valinit = valinit if valinit is not None else valmin
@@ -437,15 +350,10 @@ class PlottingToolkit:
 
     def add_radio_buttons(self, position, labels, callback=None, active=0,
                           color='gray', text_color='white', active_color='lightblue', radio_id=None):
-        """
-        Radio buttons can let me pick a force type or a direction, for example.
-        It's nice to have them right there in the figure rather than a separate window.
-        """
         from matplotlib.widgets import RadioButtons
         ax_radio = plt.axes(position)
         radio = RadioButtons(ax_radio, labels, active=active, activecolor=active_color)
 
-        # I'm tweaking their appearance to fit dark mode or any theme nicely.
         if hasattr(radio, 'circles'):
             for circle in radio.circles:
                 circle.set_facecolor('none')
@@ -467,10 +375,6 @@ class PlottingToolkit:
 
     def add_labeled_section(self, title_position, title, description=None,
                             text_color='white', title_size=10, desc_size=8):
-        """
-        Sometimes I want to create a sort of "section header" in the plot area,
-        maybe to group UI elements. This method lets me place a small title and optional description.
-        """
         texts = {}
         texts['title'] = self.add_text(
             title_position[0], title_position[1],
@@ -491,10 +395,6 @@ class PlottingToolkit:
         return texts
 
     def _adjust_color_brightness(self, color, factor):
-        """
-        A small helper to lighten or darken a given color by a certain factor.
-        I use it to create hover colors for buttons that are slightly brighter.
-        """
         import matplotlib.colors as mcolors
         try:
             rgb = mcolors.to_rgb(color)
@@ -504,10 +404,6 @@ class PlottingToolkit:
             return color
 
     def update_ui_theme(self, dark_mode=True):
-        """
-        If I switch between dark and light mode, I have to update a whole bunch of elements:
-        backgrounds, text, buttons, etc. This function tries to do it systematically.
-        """
         self.dark_mode = dark_mode
         self.current_theme = 'dark' if dark_mode else 'light'
         background = 'black' if dark_mode else 'white'
@@ -552,10 +448,6 @@ class PlottingToolkit:
             self.fig.canvas.draw_idle()
 
     def clear_ui(self):
-        """
-        If I want to remove all UI elements (like if I rebuild the interface),
-        this lets me remove them in one go.
-        """
         for element_type in self.ui_elements:
             for element_info in self.ui_elements[element_type].values():
                 if hasattr(element_info['object'], 'ax'):
@@ -563,10 +455,6 @@ class PlottingToolkit:
         self.ui_elements = {key: {} for key in self.ui_elements}
 
     def remove_element(self, element_type, element_id):
-        """
-        If I only need to remove a specific UI element by its type and ID, I can do that too.
-        This is good for dynamic GUIs.
-        """
         if element_id in self.ui_elements[element_type]:
             element = self.ui_elements[element_type][element_id]
             if hasattr(element['object'], 'ax'):
@@ -574,10 +462,6 @@ class PlottingToolkit:
             del self.ui_elements[element_type][element_id]
 
     def update_view(self, camera):
-        """
-        This updates the camera of the 3D plot if I'm working in 3D.
-        Adjusting elevation, azimuth, and distance can let me rotate the scene.
-        """
         from mpl_toolkits.mplot3d import Axes3D
         if isinstance(self.ax, Axes3D):
             self.ax.view_init(elev=camera['elevation'], azim=camera['azimuth'])
@@ -586,30 +470,18 @@ class PlottingToolkit:
                 self.fig.canvas.draw_idle()
 
     def show(self):
-        """
-        Just show the figure. If I've created a figure with matplotlib but haven't shown it,
-        this will pop up the window.
-        """
         if self.fig is not None:
             plt.show()
             self.fig = None
             self.ax = None
 
     def clear(self):
-        """
-        Closes the current figure window. Useful if I’m done with a certain plot
-        and want to fully reset.
-        """
         if self.fig is not None:
             plt.close(self.fig)
             self.fig = None
             self.ax = None
 
     def update_text(self, text_id, new_text):
-        """
-        If I previously added a text element and I want to change what it says,
-        I can do that here without recreating it.
-        """
         text_obj = self.ui_elements['text'].get(text_id, None)
         if text_obj:
             text_obj.set_text(new_text)
@@ -617,11 +489,6 @@ class PlottingToolkit:
                 self.fig.canvas.draw_idle()
 
     def update_plot_bounds(self, x_range, y_range, z_range=None):
-        """
-        Sometimes I need to adjust the axis limits after plotting.
-        Maybe I have new data out of the old range. This method ensures I don't
-        end up with zero-width ranges and updates the plot accordingly.
-        """
         from mpl_toolkits.mplot3d import Axes3D
         if self.ax is not None:
             def safe_range(rng):
@@ -643,12 +510,6 @@ class PlottingToolkit:
 
 @dataclass
 class SimulationParameters:
-    """
-    This dataclass stores the essential simulation parameters.
-    It's basically my one-stop shop for settings like how many segments, how stiff the springs are,
-    how heavy each mass is, time step, integration method, and so forth.
-    I also store initial start and end points, and whether to use dark mode.
-    """
     num_segments: int = 25
     spring_constant: float = 1000.0
     custom_equilibrium_length: float = field(default=None)
@@ -660,28 +521,56 @@ class SimulationParameters:
     applied_force: np.ndarray = field(default_factory=lambda: np.array([0.00000, 0.00000, 1.00000]))
     dark_mode: bool = True
 
+    # New parameters for alternative mode
+    parameter_mode: str = 'simulation'  # 'Simulation' or 'string_params'
+    L0: float = 2.0      # Unstretched total length
+    mu0: float = 0.01     # linear mass density
+    alpha: float = 1000.0 # stiffness (EA)
+    N: int = 25           # number of masses in string_params mode
+    use_L_not_T: bool = True
+    L: float = 2.0        # If use_L_not_T is True
+    T: float = 0.0        # If use_L_not_T is False
+
     @property
     def equilibrium_length(self) -> float:
-        # If I haven't set a custom equilibrium length, I'll figure it out automatically
-        # from the distance between the start and end points, divided by the number of segments.
-        if self.custom_equilibrium_length is not None:
-            return self.custom_equilibrium_length
-        total_length = np.linalg.norm(self.end_point - self.start_point)
-        return total_length / (self.num_segments-1)
+        if self.parameter_mode == 'simulation':
+            if self.custom_equilibrium_length is not None:
+                return self.custom_equilibrium_length
+            total_length = np.linalg.norm(self.end_point - self.start_point)
+            return total_length / (self.num_segments-1)
+        else:
+            # string_params mode
+            # Compute equilibrium length from L0, alpha, N, and either L or T
+            # k per segment = alpha*(N)/L0, mass per node = (mu0 * L0)/(N+1)
+            k_segment = self.alpha * (self.N-1) / self.L0
+            if self.use_L_not_T:
+                # L given
+                eq_length_per_segment = self.L / (self.N-1)
+                return eq_length_per_segment
+            else:
+                # T given
+                # Solve L = L0 + T/k => eq_length_per_segment = L/N
+                Lfinal = self.L0 + self.T / k_segment
+                return Lfinal / (self.N-1)
 
-    @equilibrium_length.setter
-    def equilibrium_length(self, value: float):
-        # If I want to override the default equilibrium length calculation, I can do it here.
-        self.custom_equilibrium_length = value
+    @property
+    def computed_mass(self) -> float:
+        # In string_params mode, mass per node = (mu0 * L0)/(N+1)
+        if self.parameter_mode == 'simulation':
+            return self.mass
+        else:
+            return (self.mu0 * self.L0) / (self.N)
+
+    @property
+    def computed_k(self) -> float:
+        # k per segment = alpha*(N)/L0 in string_params mode
+        if self.parameter_mode == 'simulation':
+            return self.spring_constant
+        else:
+            return (self.alpha * (self.N-1)) / self.L0
 
 
 class ForceHandler:
-    """
-    The ForceHandler deals with applying external forces to objects in the simulation.
-    I can choose a force type (like single mass, sinusoidal, Gaussian), directions, amplitude, and duration.
-    This helps me easily turn forces on/off or set them continuous.
-    """
-
     def __init__(self, physics, objects, dark_mode=True):
         self.physics = physics
         self.objects = objects
@@ -695,7 +584,6 @@ class ForceHandler:
         self.gaussian_width = len(self.objects) / 8.0
         self.sinusoidal_frequency = 10.0
 
-        # Different force profiles I might apply.
         self.types = {
             'Single Mass': lambda t, x: np.array([0.0, 0.0, 1.0]),
             'Sinusoidal': lambda t, x: np.array([0.0, 0.0, np.sin(2 * np.pi * self.sinusoidal_frequency * t)]),
@@ -703,7 +591,6 @@ class ForceHandler:
                                                np.exp(-(x - len(self.objects) // 2) ** 2 / self.gaussian_width ** 2)])
         }
 
-        # Directions I can apply the force in, chosen by user.
         self.directions = {
             'Up/Down (Z)': np.array([0.0, 0.0, 1.0]),
             'Left/Right (X)': np.array([1.0, 0.0, 0.0]),
@@ -714,10 +601,6 @@ class ForceHandler:
         self.selected_direction = 'Up/Down (Z)'
 
     def check_duration(self, iterations_per_frame):
-        """
-        If the force is not continuous, I need to track how long it's been active.
-        Once time runs out, I stop it. This gets called each frame to count down.
-        """
         if not self.continuous and self.active:
             time_elapsed = self.physics.dt * iterations_per_frame
             self.duration_remaining = max(0.0, self.duration_remaining - time_elapsed)
@@ -728,13 +611,9 @@ class ForceHandler:
         return False
 
     def toggle(self):
-        """
-        Clicking the "Apply Force" button toggles the force on or off.
-        If it's continuous mode, once on, it stays on. If not, it runs for the specified duration and stops.
-        """
         if self.active:
             self.deactivate()
-            return ('Apply Force', 'darkgray')
+            return ('Apply Force', 'darkgray' if not self.dark_mode else 'gray')
         elif self.continuous:
             self.active = True
             return ('Force Locked', 'red')
@@ -745,7 +624,6 @@ class ForceHandler:
             return ('Force Active', 'lightgreen')
 
     def apply(self, duration=None):
-        # Apply the selected force profile to the selected object(s).
         direction = self.directions[self.selected_direction]
 
         if self.selected_type == 'Single Mass':
@@ -753,20 +631,15 @@ class ForceHandler:
             self.physics.apply_force(self.selected_object, force, duration)
 
         elif self.selected_type == 'Sinusoidal':
-            # Sinusoidal force changes with time, so I base it on the current simulation time.
             magnitude = np.sin(2 * np.pi * self.sinusoidal_frequency * self.physics.time) * self.amplitude
             self.physics.apply_force(self.selected_object, direction * magnitude, duration)
 
         elif self.selected_type == 'Gaussian':
-            # Gaussian force distribution affects multiple masses around a center point.
             for i in range(1, len(self.objects) - 1):
                 magnitude = np.exp(-(i - self.selected_object) ** 2 / self.gaussian_width ** 2) * self.amplitude
                 self.physics.apply_force(i, direction * magnitude, duration)
 
     def deactivate(self):
-        """
-        Stops applying forces and resets timers.
-        """
         self.active = False
         self.duration_remaining = self.duration
         for obj_id in range(len(self.objects)):
@@ -775,20 +648,23 @@ class ForceHandler:
 
 class StringSimulationSetup:
     """
-    This GUI window lets me specify simulation parameters before running.
-    I can set number of segments, mass, dt, integration method, etc.
-    After I confirm, it returns these parameters so I can start the simulation with those settings.
+    This GUI to lets the user select simulation parameters.
+    GUI has "Basic Parameters" and "Advanced Parameters" tabs.
+    At the top of the Basic Parameters tab, The user can choose between "Simulation"
+    and "String Params", and depending on that choice, it shows the appropriate parameters
+    in the "String Properties" frame beneath.
     """
+
     def __init__(self, main_root):
         self.main_root = main_root
         self.root = tk.Toplevel(main_root)
         self.root.title("String Simulation Setup")
         self.default_params = SimulationParameters()
         self.init_variables()
+
+        # Set window sizing and behavior like originally specified
         self.root.minsize(550, 550)
         self.root.resizable(False, False)
-
-        # Positioning the window somewhere reasonable on the screen.
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         window_width = 550
@@ -796,6 +672,7 @@ class StringSimulationSetup:
         x = (screen_width // 2) - (window_width // 2)
         y = (screen_height // 4) - (window_height // 4)
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
         self.create_responsive_styles()
@@ -803,10 +680,7 @@ class StringSimulationSetup:
         self.simulation_params = None
 
     def init_variables(self):
-        """
-        Creates tkinter variables linked to the fields we'll show in the setup window.
-        These keep track of user input.
-        """
+        # Common variables
         self.num_segments_var = tk.IntVar(self.root)
         self.num_segments_var.set(self.default_params.num_segments)
         self.spring_constant_var = tk.DoubleVar(self.root)
@@ -825,11 +699,27 @@ class StringSimulationSetup:
         self.dark_mode_var = tk.BooleanVar(self.root)
         self.dark_mode_var.set(self.default_params.dark_mode)
 
+        # Parameter mode
+        self.parameter_mode_var = tk.StringVar(self.root)
+        self.parameter_mode_var.set(self.default_params.parameter_mode)
+
+        # String parameters
+        self.L0_var = tk.DoubleVar(self.root)
+        self.L0_var.set(self.default_params.L0)
+        self.mu0_var = tk.DoubleVar(self.root)
+        self.mu0_var.set(self.default_params.mu0)
+        self.alpha_var = tk.DoubleVar(self.root)
+        self.alpha_var.set(self.default_params.alpha)
+        self.N_var = tk.IntVar(self.root)
+        self.N_var.set(self.default_params.N)
+        self.use_L_not_T_var = tk.BooleanVar(self.root)
+        self.use_L_not_T_var.set(self.default_params.use_L_not_T)
+        self.L_var = tk.DoubleVar(self.root)
+        self.L_var.set(self.default_params.L)
+        self.T_var = tk.DoubleVar(self.root)
+        self.T_var.set(self.default_params.T)
+
     def create_responsive_styles(self):
-        """
-        I define some base font sizes and styles here, so they can scale if the window size changes.
-        This helps maintain readability on different screen sizes.
-        """
         style = ttk.Style()
         self.base_header_size = 14
         self.base_text_size = 10
@@ -839,11 +729,9 @@ class StringSimulationSetup:
         style.configure("Setup.TButton", font=("Arial", self.base_button_size), padding=10)
 
     def setup_gui(self):
-        """
-        Builds up the main GUI layout with a notebook containing tabs for basic and advanced parameters.
-        """
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(sticky="nsew")
+
         header_frame = ttk.Frame(main_frame)
         header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(header_frame, text="String Simulation Setup",
@@ -855,10 +743,12 @@ class StringSimulationSetup:
         notebook = ttk.Notebook(main_frame)
         notebook.grid(row=1, column=0, sticky="nsew", pady=5)
 
+        # Basic Parameters tab
         basic_frame = ttk.Frame(notebook, padding="10")
         notebook.add(basic_frame, text="Basic Parameters")
         self.setup_basic_parameters(basic_frame)
 
+        # Advanced Parameters tab
         advanced_frame = ttk.Frame(notebook, padding="10")
         notebook.add(advanced_frame, text="Advanced Parameters")
         self.setup_advanced_parameters(advanced_frame)
@@ -871,25 +761,33 @@ class StringSimulationSetup:
         )
         start_button.grid(row=2, column=0, pady=10)
 
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
         main_frame.grid_rowconfigure(1, weight=1)
         main_frame.grid_columnconfigure(0, weight=1)
 
     def setup_basic_parameters(self, parent):
-        """
-        The "Basic Parameters" tab shows options like number of segments, spring constant, mass, etc.
-        I add entries and labels for each one.
-        """
-        props_frame = ttk.LabelFrame(parent, text="String Properties", padding="10")
-        props_frame.pack(fill="x", padx=5, pady=5)
+        # Frame for selecting parameter mode
+        mode_frame = ttk.LabelFrame(parent, text="Parameter Mode", padding="10")
+        mode_frame.pack(fill="x", padx=5, pady=5)
 
-        ttk.Label(props_frame, text="Number of Masses:").grid(row=0, column=0, padx=5, pady=5)
-        mass_entry = ttk.Entry(props_frame, textvariable=self.num_segments_var, width=10)
-        mass_entry.grid(row=0, column=1, padx=5, pady=5)
+        ttk.Radiobutton(mode_frame, text="Simulation Properties", variable=self.parameter_mode_var, value="simulation",
+                        command=self.update_parameter_visibility).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(mode_frame, text="String Properties", variable=self.parameter_mode_var, value="string_params",
+                        command=self.update_parameter_visibility).pack(side=tk.LEFT, padx=5)
 
+        # Frame that shows either simulations parameters or string parameters based on selection
+        self.props_frame = ttk.LabelFrame(parent, text="String Properties", padding="10")
+        self.props_frame.pack(fill="x", padx=5, pady=5)
+
+        # Simulation parameters widgets
+        self.simulation_widgets = []
+        # Number of Masses
+        rowi=0
+        lbl = ttk.Label(self.props_frame, text="Number of Masses:")
+        ent = ttk.Entry(self.props_frame, textvariable=self.num_segments_var, width=10)
+        lbl.grid(row=rowi, column=0, padx=5, pady=5)
+        ent.grid(row=rowi, column=1, padx=5, pady=5)
+        self.simulation_widgets.extend([lbl, ent])
         def update_equilibrium_length(*args):
-            # If user changes num_segments, recalc equilibrium length automatically.
             try:
                 num_segments = self.num_segments_var.get()
                 if num_segments > 1:
@@ -900,28 +798,97 @@ class StringSimulationSetup:
                     self.equilibrium_length_var.set(str(natural_length))
             except tk.TclError:
                 pass
-
         self.num_segments_var.trace_add("write", update_equilibrium_length)
 
-        ttk.Label(props_frame, text="Spring constant (N/m):").grid(row=1, column=0, padx=5, pady=5)
-        ttk.Entry(props_frame, textvariable=self.spring_constant_var, width=10).grid(row=1, column=1, padx=5, pady=5)
+        # Spring constant
+        rowi+=1
+        lbl = ttk.Label(self.props_frame, text="Spring constant (N/m):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.spring_constant_var, width=10)
+        lbl.grid(row=rowi, column=0, padx=5, pady=5)
+        ent.grid(row=rowi, column=1, padx=5, pady=5)
+        self.simulation_widgets.extend([lbl, ent])
 
-        ttk.Label(props_frame, text="Mass per point (kg):").grid(row=2, column=0, padx=5, pady=5)
-        ttk.Entry(props_frame, textvariable=self.mass_var, width=10).grid(row=2, column=1, padx=5, pady=5)
+        # Mass per point
+        rowi+=1
+        lbl = ttk.Label(self.props_frame, text="Mass per point (kg):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.mass_var, width=10)
+        lbl.grid(row=rowi, column=0, padx=5, pady=5)
+        ent.grid(row=rowi, column=1, padx=5, pady=5)
+        self.simulation_widgets.extend([lbl, ent])
 
-        ttk.Label(props_frame, text="Equilibrium length (m):").grid(row=3, column=0, padx=5, pady=5)
-        eq_length_entry = ttk.Entry(props_frame, textvariable=self.equilibrium_length_var, width=10)
-        eq_length_entry.grid(row=3, column=1, padx=5, pady=5)
-
-        # A small help text about equilibrium length, just to remind users what it means.
+        # Equilibrium length
+        rowi+=1
+        lbl = ttk.Label(self.props_frame, text="Equilibrium length (m):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.equilibrium_length_var, width=10)
+        lbl.grid(row=rowi, column=0, padx=5, pady=5)
+        ent.grid(row=rowi, column=1, padx=5, pady=5)
+        self.simulation_widgets.extend([lbl, ent])
         help_label = ttk.Label(
-            props_frame,
+            self.props_frame,
             text="(Initial natural length of each segment)\nForce: T = k(r - r0)",
             font=("Arial", 8),
             foreground="gray"
         )
-        help_label.grid(row=3, column=2, padx=5, pady=5, sticky="w")
+        help_label.grid(row=rowi, column=2, padx=5, pady=5, sticky="w")
+        self.simulation_widgets.append(help_label)
 
+        # String parameters widgets
+        self.string_widgets = []
+        rowj = 0
+        lbl = ttk.Label(self.props_frame, text="L0 (unstretched length):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.L0_var, width=10)
+        lbl.grid(row=rowj, column=0, padx=5, pady=5)
+        ent.grid(row=rowj, column=1, padx=5, pady=5)
+        self.string_widgets.extend([lbl, ent])
+
+        lbl = ttk.Label(self.props_frame, text="α (stiffness = EA):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.alpha_var, width=10)
+        lbl.grid(row=rowj, column=3, padx=5, pady=5)
+        ent.grid(row=rowj, column=4, padx=5, pady=5)
+        self.string_widgets.extend([lbl, ent])
+
+        rowj+=1
+        lbl = ttk.Label(self.props_frame, text="µ0 (linear mass density):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.mu0_var, width=10)
+        lbl.grid(row=rowj, column=0, padx=5, pady=5)
+        ent.grid(row=rowj, column=1, padx=5, pady=5)
+        self.string_widgets.extend([lbl, ent])
+
+        lbl = ttk.Label(self.props_frame, text="N (Number of masses):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.N_var, width=10)
+        lbl.grid(row=rowj, column=3, padx=5, pady=5)
+        ent.grid(row=rowj, column=4, padx=5, pady=5)
+        self.string_widgets.extend([lbl, ent])
+
+        # Choose L or T
+        rowj+=1
+        choose_L_frame = ttk.Frame(self.props_frame)
+        choose_L_frame.grid(row=rowj, column=0, columnspan=2, pady=10)
+        ttk.Radiobutton(choose_L_frame, text="Set L", variable=self.use_L_not_T_var, value=True).pack(side=tk.LEFT, padx=5)
+        self.string_widgets.append(choose_L_frame)
+
+        choose_T_frame = ttk.Frame(self.props_frame)
+        choose_T_frame.grid(row=rowj, column=2, columnspan=2, pady=10)
+        ttk.Radiobutton(choose_T_frame, text="Set T", variable=self.use_L_not_T_var, value=False).pack(side=tk.LEFT, padx=5)
+        self.string_widgets.append(choose_T_frame)
+
+        rowj+=1
+        lbl = ttk.Label(self.props_frame, text="L (if chosen):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.L_var, width=10)
+        lbl.grid(row=rowj, column=0, padx=5, pady=5)
+        ent.grid(row=rowj, column=1, padx=5, pady=5)
+        self.string_widgets.extend([lbl, ent])
+
+        lbl = ttk.Label(self.props_frame, text="T (if chosen):")
+        ent = ttk.Entry(self.props_frame, textvariable=self.T_var, width=10)
+        lbl.grid(row=rowj, column=3, padx=5, pady=5)
+        ent.grid(row=rowj, column=4, padx=5, pady=5)
+        self.string_widgets.extend([lbl, ent])
+
+        # Initially update visibility
+        self.update_parameter_visibility()
+
+        # Display Settings
         display_frame = ttk.LabelFrame(parent, text="Display Settings", padding="10")
         display_frame.pack(fill="x", padx=5, pady=5)
         ttk.Checkbutton(
@@ -930,11 +897,24 @@ class StringSimulationSetup:
             variable=self.dark_mode_var
         ).pack(padx=5, pady=5)
 
+    def update_parameter_visibility(self):
+        mode = self.parameter_mode_var.get()
+        if mode == 'simulation':
+            # Show simulation widgets
+            for w in self.simulation_widgets:
+                w.grid()
+            # Hide string widgets
+            for w in self.string_widgets:
+                w.grid_remove()
+        else:
+            # Show string widgets
+            for w in self.string_widgets:
+                w.grid()
+            # Hide simulation widgets
+            for w in self.simulation_widgets:
+                w.grid_remove()
+
     def setup_advanced_parameters(self, parent):
-        """
-        The "Advanced Parameters" tab includes force magnitude, integration method selection, and dt.
-        I also show the different integration methods with brief descriptions.
-        """
         force_frame = ttk.LabelFrame(parent, text="Force Settings", padding="10")
         force_frame.pack(fill="x", padx=5, pady=5)
         ttk.Label(force_frame, text="Force magnitude (N):").grid(row=0, column=0, padx=5, pady=5)
@@ -983,34 +963,65 @@ class StringSimulationSetup:
         ).pack(pady=2)
 
     def validate_parameters(self):
-        """
-        Makes sure all the user inputs are valid (e.g., no negative time steps).
-        If invalid, show an error message. Otherwise, return True.
-        """
         try:
-            num_segments = self.num_segments_var.get()
-            if num_segments < 3:
-                raise ValueError("Number of masses must be at least 3")
+            mode = self.parameter_mode_var.get()
+            if mode == 'simulation':
+                num_segments = self.num_segments_var.get()
+                if num_segments < 3:
+                    raise ValueError("Number of masses must be at least 3")
 
-            spring_constant = self.spring_constant_var.get()
-            if spring_constant <= 0:
-                raise ValueError("Spring constant must be positive")
+                spring_constant = self.spring_constant_var.get()
+                if spring_constant <= 0:
+                    raise ValueError("Spring constant must be positive")
 
-            mass = self.mass_var.get()
-            if mass <= 0:
-                raise ValueError("Mass must be positive")
+                mass = self.mass_var.get()
+                if mass <= 0:
+                    raise ValueError("Mass must be positive")
 
-            dt = self.dt_var.get()
-            if dt <= 0:
-                raise ValueError("Time step must be positive")
+                dt = self.dt_var.get()
+                if dt <= 0:
+                    raise ValueError("Time step must be positive")
 
-            equilibrium_length = self.equilibrium_length_var.get()
-            if equilibrium_length <= 0:
-                raise ValueError("Equilibrium length must be positive")
+                equilibrium_length = self.equilibrium_length_var.get()
+                if equilibrium_length <= 0:
+                    raise ValueError("Equilibrium length must be positive")
 
-            force_magnitude = self.force_magnitude_var.get()
-            if force_magnitude < 0:
-                raise ValueError("Force magnitude cannot be negative")
+                force_magnitude = self.force_magnitude_var.get()
+                if force_magnitude < 0:
+                    raise ValueError("Force magnitude cannot be negative")
+
+            else:
+                # string_params
+                L0 = self.L0_var.get()
+                mu0 = self.mu0_var.get()
+                alpha = self.alpha_var.get()
+                N = self.N_var.get()
+                dt = self.dt_var.get()
+
+                if N < 3:
+                    raise ValueError("N must be >= 3")
+                if L0 <= 0:
+                    raise ValueError("L0 must be positive")
+                if mu0 <= 0:
+                    raise ValueError("µ0 must be positive")
+                if alpha <= 0:
+                    raise ValueError("α must be positive")
+                if dt <= 0:
+                    raise ValueError("dt must be positive")
+
+                force_magnitude = self.force_magnitude_var.get()
+                if force_magnitude < 0:
+                    raise ValueError("Force magnitude cannot be negative")
+
+                if self.use_L_not_T_var.get():
+                    L = self.L_var.get()
+                    if L <= 0:
+                        raise ValueError("L must be positive")
+                else:
+                    T = self.T_var.get()
+                    if T < 0:
+                        raise ValueError("T cannot be negative")
+
             return True
 
         except ValueError as e:
@@ -1018,46 +1029,50 @@ class StringSimulationSetup:
             return False
 
     def get_parameters(self):
-        """
-        If parameters are valid, construct a SimulationParameters instance from them.
-        If not valid, return None.
-        """
         if not self.validate_parameters():
             return None
 
-        params = SimulationParameters(
-            num_segments=(self.num_segments_var.get() - 1),
-            spring_constant=self.spring_constant_var.get(),
-            mass=self.mass_var.get(),
-            dt=self.dt_var.get(),
-            integration_method=self.integration_var.get(),
-            applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
-            dark_mode=self.dark_mode_var.get(),
-            custom_equilibrium_length=self.equilibrium_length_var.get()
-        )
+        mode = self.parameter_mode_var.get()
+        if mode == 'simulation':
+            params = SimulationParameters(
+                num_segments=(self.num_segments_var.get() - 1),
+                spring_constant=self.spring_constant_var.get(),
+                mass=self.mass_var.get(),
+                dt=self.dt_var.get(),
+                integration_method=self.integration_var.get(),
+                applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
+                dark_mode=self.dark_mode_var.get(),
+                custom_equilibrium_length=self.equilibrium_length_var.get(),
+                parameter_mode='simulation'
+            )
+            return params
+        else:
+            # In string_params mode, N_var is the number_of_masses directly (not subtracting 1 here)
+            N_val = self.N_var.get()
 
-        return params
+            params = SimulationParameters(
+                parameter_mode='string_params',
+                integration_method=self.integration_var.get(),
+                applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
+                dark_mode=self.dark_mode_var.get(),
+                dt=self.dt_var.get(),
+                L0=self.L0_var.get(),
+                mu0=self.mu0_var.get(),
+                alpha=self.alpha_var.get(),
+                N=N_val,  # N is number_of_masses directly
+                use_L_not_T=self.use_L_not_T_var.get(),
+                L=self.L_var.get(),
+                T=self.T_var.get(),
+                num_segments=N_val - 1  # Since N is masses, segments = N-1
+            )
+            return params
 
     def start_simulation(self):
-        """
-        Called when user clicks "Start Simulation".
-        If params are valid, close this setup window and pass parameters out so the main code can start the sim.
-        """
         if not self.validate_parameters():
             return
-        self.simulation_params = SimulationParameters(
-            num_segments=(self.num_segments_var.get()-1),
-            spring_constant=self.spring_constant_var.get(),
-            mass=self.mass_var.get(),
-            dt=self.dt_var.get(),
-            integration_method=self.integration_var.get(),
-            applied_force=np.array([0.0, 0.0, self.force_magnitude_var.get()]),
-            dark_mode=self.dark_mode_var.get(),
-            custom_equilibrium_length = self.equilibrium_length_var.get()
-        )
+        self.simulation_params = self.get_parameters()
         self.root.quit()
         self.root.destroy()
-
 
 
 class SimulationVisualizer:
@@ -2079,6 +2094,7 @@ class AnalysisVisualizer:
 
         # Second row of analysis buttons (centered)
         row2_buttons = [
+            ("Measure Period", self.measure_period_dialog),
             ("Harmonic Analysis", self.analyze_harmonics),
             ("Frequency Analysis", self.analyze_frequencies),
             ("Natural Frequencies", self.analyze_natural_frequencies),
@@ -2088,7 +2104,7 @@ class AnalysisVisualizer:
         # adds the second row of buttons
         for i, (text, command) in enumerate(row2_buttons):
             ttk.Button(analysis_frame, text=text, command=command).grid(
-                row=1, column=1 + i, padx=5, pady=5, sticky="ew"
+                row=1, column=i, padx=5, pady=5, sticky="ew"
             )
 
     def load_files(self):
@@ -2593,6 +2609,63 @@ class AnalysisVisualizer:
                 self.root.withdraw()
                 self.plot_displacement_comparison(node_id)
                 self.root.deiconify()
+            else:
+                messagebox.showwarning("Warning", "Please select a node.")
+
+        def on_cancel():
+            dialog.destroy()
+
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(pady=10)
+        ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f'+{x}+{y}')
+
+    def measure_period_dialog(self):
+        files = self.get_selected_files()
+        if not files:
+            messagebox.showwarning("Warning", "No simulation files loaded.")
+            return
+
+        # We will pick the first file for simplicity, or let user pick a file if needed.
+        file_path = files[0]
+        summary = self.analyzer.get_simulation_summary(file_path)
+        num_nodes = summary['num_objects']
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Select Node for Period Measurement")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding="10")
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(frame, text="Select a node to analyze:").pack(pady=(0, 5))
+
+        listbox = tk.Listbox(frame, selectmode=tk.SINGLE, height=10)
+        listbox.pack(fill=tk.BOTH, expand=True, pady=5)
+        for i in range(num_nodes):
+            listbox.insert(tk.END, f"Node {i}")
+
+        use_velocity_var = tk.BooleanVar(dialog)
+        use_velocity_var.set(False)
+        ttk.Checkbutton(frame, text="Use Velocity for Zero-Crossings", variable=use_velocity_var).pack(pady=5)
+
+        def on_ok():
+            selections = listbox.curselection()
+            if selections:
+                node_id = int(listbox.get(selections[0]).split()[1])
+                dialog.destroy()
+                self.root.withdraw()
+                try:
+                    self.analyzer.plot_mode_period(file_path, node_id, use_velocity=use_velocity_var.get())
+                finally:
+                    self.root.deiconify()
             else:
                 messagebox.showwarning("Warning", "Please select a node.")
 

@@ -43,7 +43,6 @@ class PhysicsEngine:
         # Initialize the data recorder
         self.data_recorder = SimulationDataRecorder(len(objects))
 
-
     def apply_force(self, obj_id: int, force: np.ndarray, duration: float = None):
         """
         Applies an external force to a specific mass for a given duration.
@@ -86,13 +85,13 @@ class PhysicsEngine:
         return external_force, spring_forces, total_force
 
     def check_and_clear_expired_forces(self):
-        """Check for and clear any expired forces."""
+        """Checks for and clears any expired forces."""
         for obj_id in self.external_forces:
             if not self.continuous_forces[obj_id] and self.time >= self.force_end_times[obj_id]:
                 self.clear_force(obj_id)
 
     def clear_force(self, obj_id: int):
-        """Clear all forces applied to a specific object."""
+        """Clears all forces applied to a specific object."""
         self.external_forces[obj_id] = np.zeros(3)
         self.force_end_times[obj_id] = 0.0
         self.continuous_forces[obj_id] = False
@@ -108,8 +107,7 @@ class PhysicsEngine:
         Returns:
             The force vector acting on the first mass due to the spring.
 
-        Compute the spring force between two connected masses using Hooke's Law.
-        F = -k(|x2-x1| - L0)(x2-x1)/|x2-x1| where L0 is equilibrium length
+        F = -k(|x2-x1| - L0)(x2-x1)/|x2-x1|
         """
         separation = pos2 - pos1
         current_length = np.linalg.norm(separation)
@@ -121,18 +119,6 @@ class PhysicsEngine:
         # How much the spring is stretched/compressed from equilibrium
         displacement = current_length - self.equilibrium_length
         force_magnitude = self.k * displacement
-
-        # Used to debug info and verify force calculation
-        # if hasattr(self, 'debug_counter'):
-        #     self.debug_counter += 1
-        #     if self.debug_counter % 1000 == 0:  # Print every 1000th calculation
-        #         print(f"Spring force calculation:")
-        #         print(f"Current length: {current_length:.6f}")
-        #         print(f"Equilibrium length: {self.equilibrium_length:.6f}")
-        #         print(f"Displacement from equilibrium: {displacement:.6f}")
-        #         print(f"Force magnitude: {force_magnitude:.2f}")
-        # else:
-        #     self.debug_counter = 0
 
         return force_magnitude * unit_vector
 
@@ -177,7 +163,6 @@ class PhysicsEngine:
             equilibrium_length = self.equilibrium_length
         else:
             equilibrium_length = total_length / (len(self.objects) - 1)
-            print(equilibrium_length)
 
         # Calculate displacement from equilibrium length
         displacement = total_length - (equilibrium_length * (len(self.objects) - 1))
@@ -188,14 +173,14 @@ class PhysicsEngine:
         return tension
 
     def start_simulation(self):
-        """Start the simulation timer if not already started."""
+        """Starts the simulation timer if not already started."""
         if not self.simulation_started:
             self.simulation_started = True
             self.start_time = self.time
             print("Simulation started at time:", self.time)
 
     def step(self, integration_method: str = 'leapfrog') -> None:
-        """Advance the simulation by one timestep."""
+        """Advances the simulation by one timestep."""
         if self.simulation_started:
             self.check_and_clear_expired_forces()
 
@@ -204,7 +189,7 @@ class PhysicsEngine:
             fixed_masses = [obj.pinned for obj in self.objects]
             accelerations = np.array([self.compute_acceleration(i) for i in range(len(self.objects))])
 
-            if integration_method in ['leapfrog', 'euler_cromer', 'rk2', 'rk4']:
+            if integration_method in ['leapfrog', 'euler', 'euler_cromer', 'rk2', 'rk4']:
                 def get_accelerations(pos):
                     original_positions = positions.copy()
                     for i, obj in enumerate(self.objects):
