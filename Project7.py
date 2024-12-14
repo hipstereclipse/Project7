@@ -14,7 +14,7 @@ class MainMenu:
         """Initializes the main menu window with default settings."""
         # Create the main window
         self.root = tk.Tk()
-        self.root.title("String Physics Simulation and Analysis Tool")
+        self.root.title("String Simulator 5000")
 
         # Calculate window size (30% of screen)
         window_width = 350
