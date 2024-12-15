@@ -79,8 +79,8 @@ class SimulationDataRecorder:
 
 class DataAnalysis:
     """
-    I use this class after the simulation is done and I have CSV files.
-    I load those files into memory and then I can do various forms of analysis.
+    I use this class after the simulation is done and have CSV files.
+    User can load those files into memory, then do various forms of analysis.
     """
 
     def __init__(self):
@@ -323,43 +323,39 @@ class DataAnalysis:
         if use_velocity:
             vx, vy, vz = self.get_object_velocities(file_path, node_id)
             # Compute speed along displacement direction or just magnitude
-            # For zero-cross detection, we can just pick vx or use magnitude:
+            # For zero cross detection, we can just pick vx or use magnitude per profs instructions:
             speeds = np.sqrt(vx**2 + vy**2 + vz**2)
             data_to_analyze = speeds - np.mean(speeds)  # Center it
         else:
             data_to_analyze = displacements - np.mean(displacements)
 
-        # Find zero-crossings
+        # Finds zero crossings and store them in the zero crossing array
         zero_crossings = []
         for i in range(1, len(data_to_analyze)):
-            if data_to_analyze[i-1] < 0 and data_to_analyze[i] >= 0:
-                # found a crossing
-                # linear interpolation for better accuracy
-                ratio = -data_to_analyze[i-1] / (data_to_analyze[i] - data_to_analyze[i-1])
+            if data_to_analyze[i-1] < 0 and data_to_analyze[i] >= 0: # found a crossing
+                ratio = -data_to_analyze[i-1] / (data_to_analyze[i] - data_to_analyze[i-1]) # uses a linear interpolation for better accuracy
                 t_cross = time[i-1] + ratio * (time[i] - time[i-1])
                 zero_crossings.append(t_cross)
 
-        # If we found multiple zero crossings, we can measure the period by the average difference
-        # between consecutive zero-crossings of the same sign pattern.
-        # Usually, every second zero crossing might represent a full period (since it goes up then down).
-        if len(zero_crossings) < 2:
-            return None  # Not enough data to determine period
+        # If we find multiple zero crossings, we can measure the period by the average difference
+        # between consecutive zero crossings of the same sign pattern.
+        # Usually every second zero crossing might represent a full period since it goes up then down.
+        if len(zero_crossings) < 2: # Not enough data to determine period
+            return None
 
         # Typically the period is the difference between every second crossing
-        # because one zero-cross is going up, the next going down, then next going up again.
-        # Let's take the difference between every other zero crossing:
+        # because one zero cross is going up, the next going down, then next going up again.
+        # We take the difference between every other zero crossing:
         if len(zero_crossings) > 2:
             intervals = []
             for i in range(2, len(zero_crossings)):
                 intervals.append(zero_crossings[i] - zero_crossings[i-2])
             if intervals:
                 period = np.mean(intervals)
-            else:
-                # fallback if not enough
+            else: # fallback if not enough
                 period = zero_crossings[-1] - zero_crossings[0]
         else:
-            # Just two zero crossings means half a period
-            period = 2 * (zero_crossings[1] - zero_crossings[0])
+            period = 2 * (zero_crossings[1] - zero_crossings[0]) # Just two zero crossings means half a period
 
         return period
 

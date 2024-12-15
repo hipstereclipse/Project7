@@ -12,7 +12,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Button, Slider, RadioButtons
 
 from data_handling import DataAnalysis
-from data_handling import SimulationDataRecorder  # Needed for referencing if required
+from data_handling import SimulationDataRecorder
 from Mass import SimulationObject
 from Integrator import INTEGRATORS
 from Physics_Engine import PhysicsEngine
@@ -540,7 +540,7 @@ class SimulationParameters:
             return total_length / (self.num_segments-1)
         else:
             # string_params mode
-            # Compute equilibrium length from L0, alpha, N, and either L or T
+            # Computes equilibrium length from L0, alpha, N, and either L or T
             # k per segment = alpha*(N)/L0, mass per node = (mu0 * L0)/(N+1)
             k_segment = self.alpha * (self.N-1) / self.L0
             if self.use_L_not_T:
@@ -549,7 +549,7 @@ class SimulationParameters:
                 return eq_length_per_segment
             else:
                 # T given
-                # Solve L = L0 + T/k => eq_length_per_segment = L/N
+                # Solves L = L0 + T/k => eq_length_per_segment = L/N
                 Lfinal = self.L0 + self.T / k_segment
                 return Lfinal / (self.N-1)
 
@@ -780,7 +780,8 @@ class StringSimulationSetup:
 
         # Simulation parameters widgets
         self.simulation_widgets = []
-        # Number of Masses
+
+        # Number of Masses entry
         rowi=0
         lbl = ttk.Label(self.props_frame, text="Number of Masses:")
         ent = ttk.Entry(self.props_frame, textvariable=self.num_segments_var, width=10)
@@ -800,7 +801,7 @@ class StringSimulationSetup:
                 pass
         self.num_segments_var.trace_add("write", update_equilibrium_length)
 
-        # Spring constant
+        # Spring constant entry
         rowi+=1
         lbl = ttk.Label(self.props_frame, text="Spring constant (N/m):")
         ent = ttk.Entry(self.props_frame, textvariable=self.spring_constant_var, width=10)
@@ -808,7 +809,7 @@ class StringSimulationSetup:
         ent.grid(row=rowi, column=1, padx=5, pady=5)
         self.simulation_widgets.extend([lbl, ent])
 
-        # Mass per point
+        # Mass per point entry
         rowi+=1
         lbl = ttk.Label(self.props_frame, text="Mass per point (kg):")
         ent = ttk.Entry(self.props_frame, textvariable=self.mass_var, width=10)
@@ -816,7 +817,7 @@ class StringSimulationSetup:
         ent.grid(row=rowi, column=1, padx=5, pady=5)
         self.simulation_widgets.extend([lbl, ent])
 
-        # Equilibrium length
+        # Equilibrium length entry
         rowi+=1
         lbl = ttk.Label(self.props_frame, text="Equilibrium length (m):")
         ent = ttk.Entry(self.props_frame, textvariable=self.equilibrium_length_var, width=10)
@@ -834,6 +835,8 @@ class StringSimulationSetup:
 
         # String parameters widgets
         self.string_widgets = []
+
+        # Unstretched length entry
         rowj = 0
         lbl = ttk.Label(self.props_frame, text="L0 (unstretched length):")
         ent = ttk.Entry(self.props_frame, textvariable=self.L0_var, width=10)
@@ -841,12 +844,14 @@ class StringSimulationSetup:
         ent.grid(row=rowj, column=1, padx=5, pady=5)
         self.string_widgets.extend([lbl, ent])
 
+        # Stiffness entry
         lbl = ttk.Label(self.props_frame, text="α (stiffness = EA):")
         ent = ttk.Entry(self.props_frame, textvariable=self.alpha_var, width=10)
         lbl.grid(row=rowj, column=3, padx=5, pady=5)
         ent.grid(row=rowj, column=4, padx=5, pady=5)
         self.string_widgets.extend([lbl, ent])
 
+        # Linear mass density entry
         rowj+=1
         lbl = ttk.Label(self.props_frame, text="µ0 (linear mass density):")
         ent = ttk.Entry(self.props_frame, textvariable=self.mu0_var, width=10)
@@ -854,13 +859,15 @@ class StringSimulationSetup:
         ent.grid(row=rowj, column=1, padx=5, pady=5)
         self.string_widgets.extend([lbl, ent])
 
+        # Number of masses entry (my logics screwy with this because of a mistake I made early on in designing the program)
         lbl = ttk.Label(self.props_frame, text="N (Number of masses):")
         ent = ttk.Entry(self.props_frame, textvariable=self.N_var, width=10)
         lbl.grid(row=rowj, column=3, padx=5, pady=5)
         ent.grid(row=rowj, column=4, padx=5, pady=5)
         self.string_widgets.extend([lbl, ent])
 
-        # Choose L or T
+
+        # Lets user choose L or T, and seperates them to let them sit over their respective variables to some extent
         rowj+=1
         choose_L_frame = ttk.Frame(self.props_frame)
         choose_L_frame.grid(row=rowj, column=0, columnspan=2, pady=10)
