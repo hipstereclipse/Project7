@@ -16,28 +16,28 @@ class MainMenu:
         self.root = tk.Tk()
         self.root.title("String Simulator 5000")
 
-        # Calculate window size (30% of screen)
+        # Calculates window size (30% of screen)
         window_width = 350
         window_height = 450
 
-        # Calculate position to center the window
+        # Calculates position to center the window
         x = (self.root.winfo_screenwidth() // 2) - (window_width // 2)
         y = (self.root.winfo_screenheight() // 2) - (window_height // 2)
 
-        # Set window size and position
+        # Sets window size and position
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
-        # Make window non-resizable for consistent layout
+        # Makes window non-resizable for consistent layout
         self.root.resizable(False, False)
 
-        # Configure the grid
+        # Configures the grid
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-        # Setup the GUI elements
+        # Sets up the GUI elements
         self.setup_gui()
 
-        # Track if we're returning to menu from simulation
+        # Tracks if we're returning to menu from simulation
         self.returning_from_simulation = False
 
     def setup_gui(self):
@@ -81,7 +81,7 @@ class MainMenu:
             padding=10
         )
 
-        # Create buttons with consistent width
+        # Creates buttons with consistent width
         button_width = 25
 
         # New Simulation button
