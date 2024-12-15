@@ -2928,7 +2928,7 @@ class AnalysisVisualizer:
                 xlabel="Frequency (Hz)",
                 ylabel="Node Number",
                 grid=True,
-                figure_size=(12, 10),
+                figure_size=(12, 10)
             )
             fig1, ax1 = plotter.create_figure(heatmap_config)
             im = ax1.pcolormesh(
@@ -2948,7 +2948,7 @@ class AnalysisVisualizer:
                 xlabel="Frequency (Hz)",
                 ylabel="Normalized Magnitude",
                 grid=True,
-                figure_size=(12, 6),
+                figure_size=(12, 6)
             )
 
             plotter2.plot(
@@ -2963,7 +2963,7 @@ class AnalysisVisualizer:
             )
 
             # Identifies top peaks
-            peak_indices = np.argsort(average_spectrum)[-5:][::-1]
+            peak_indices = np.argsort(average_spectrum)[-10:][::-1]
             peak_freqs = freqs[peak_indices]
             peak_mags = average_spectrum[peak_indices]
 
@@ -2980,24 +2980,30 @@ class AnalysisVisualizer:
             for i, (pf, pm) in enumerate(zip(peak_freqs, peak_mags)):
                 summary_text += f"{i + 1}: {pf:.1f} Hz ({pm:.2f})\n"
 
-            # Places text box inside plot area, aligns properly, and adjusts layout
+            # Places text box with better padding and adjust figure margins
             plotter2.ax.text(
-                0.95, 0.95,
+                0.95, 0.85,  # Moved text box down to prevent title overlap
                 summary_text,
                 transform=plotter2.ax.transAxes,
                 fontsize=9,
                 va='top',
                 ha='right',
-                bbox=dict(facecolor='white', edgecolor='gray', alpha=0.8, boxstyle='round')
+                bbox=dict(
+                    facecolor='white',
+                    edgecolor='gray',
+                    alpha=0.8,
+                    boxstyle='round,pad=0.5'
+                )
             )
 
-            # Shows legends and adjust layout so nothing is cut off
+            # Shows legends and adjust layout
             plotter2.ax.legend(loc='upper left', frameon=True)
             fig1.tight_layout()
             plotter2.fig.tight_layout()
-            # Adjusts to ensure no cutting off
-            plotter2.fig.subplots_adjust(left=.1,right=0.9,top=0.9,bottom=0.1)
-            fig1.subplots_adjust(left=.1,right=0.9,top=0.9,bottom=0.1)
+
+            # Adjusts margins to prevent text cutoff
+            fig1.subplots_adjust(left=0.12, right=0.88, top=0.85, bottom=0.12)  # Increased top margin
+            plotter2.fig.subplots_adjust(left=0.12, right=0.85, top=0.85, bottom=0.12)  # Increased top margin
 
             plotter.show()
             plotter2.show()
